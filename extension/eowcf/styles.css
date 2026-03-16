@@ -1,0 +1,345 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 24px;
+  line-height: 1.5;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+h1 {
+  font-size: 28px;
+  color: #c4a35a;
+}
+
+.subtitle {
+  color: #888;
+  font-size: 14px;
+}
+
+h2 {
+  font-size: 20px;
+  color: #c4a35a;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-size: 15px;
+  color: #aaa;
+  margin: 16px 0 8px;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+.input-panel, .output-panel {
+  background: #16213e;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #333;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 2px;
+}
+
+.field-hint {
+  font-size: 10px;
+  color: #6a8caf;
+  margin-top: 2px;
+}
+
+input[type="number"], select {
+  background: #0f3460;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+input[type="number"]:focus, select:focus {
+  outline: none;
+  border-color: #c4a35a;
+}
+
+.checkbox-group {
+  flex-direction: row;
+  align-items: center;
+}
+
+.checkbox-group label {
+  font-size: 13px;
+  color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.spell-offensive {
+  color: #f88;
+  font-size: 10px;
+  font-weight: normal;
+}
+
+input[type="checkbox"] {
+  accent-color: #c4a35a;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+/* EOWCF status box */
+.eowcf-box {
+  background: #16213e;
+  border: 1px solid #c4a35a44;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+.eowcf-box .checkbox-inline {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c4a35a;
+}
+.eowcf-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: flex-end;
+  margin-top: 8px;
+}
+.eowcf-fields .form-group {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.eowcf-fields input[type="text"] {
+  width: 160px;
+}
+.eowcf-fields input[type="number"] {
+  width: 80px;
+}
+
+/* Validation error state */
+.input-error {
+  border-color: #e74c3c !important;
+  box-shadow: 0 0 0 1px #e74c3c;
+}
+.input-error::placeholder {
+  color: #e74c3c99;
+}
+
+/* Honor summary bar below the title dropdown */
+.honor-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 12px;
+  color: #999;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #0f3460;
+  border-radius: 4px;
+}
+
+.honor-summary:empty {
+  display: none;
+}
+
+.honor-summary strong {
+  color: #c4a35a;
+}
+
+/* Building percentage next to label */
+.bld-pct {
+  color: #c4a35a;
+  font-weight: 600;
+}
+.bld-wip {
+  color: #e07040;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.output-placeholder {
+  color: #666;
+  font-style: italic;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.output-panel {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
+/* Result cards in output panel */
+.result-card {
+  background: #0f3460;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.result-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #c4a35a;
+}
+
+.result-card table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.result-card td {
+  padding: 2px 0;
+}
+
+.result-card td:first-child {
+  color: #999;
+}
+
+.result-card td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-card tr.highlight td {
+  color: #e0e0e0;
+  font-weight: 600;
+  border-top: 1px solid #444;
+  padding-top: 4px;
+}
+
+.result-card tr.positive td {
+  color: #4ecdc4;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.result-card tr.negative td {
+  color: #e74c3c;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.card-note {
+  font-size: 11px;
+  color: #777;
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* Comparison section */
+.comparison-card input[type="number"] {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.comparison {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.comparison.match {
+  background: rgba(78, 205, 196, 0.15);
+  border: 1px solid #4ecdc4;
+  color: #4ecdc4;
+}
+
+.comparison.mismatch {
+  background: rgba(231, 76, 60, 0.15);
+  border: 1px solid #e74c3c;
+  color: #e7a08c;
+}
+
+/* Import bar */
+.import-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.import-bar button {
+  background: #c4a35a;
+  color: #1a1a2e;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.import-bar button:hover {
+  background: #d4b36a;
+}
+
+#importStatus {
+  font-size: 11px;
+  color: #999;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.page-age {
+  background: #0f3460;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+  .output-panel {
+    position: static;
+  }
+}

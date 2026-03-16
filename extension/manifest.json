@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Utopia Smart Tools",
+  "version": "0.3.1",
+  "description": "Smart tools and calculators for Utopia (utopia-game.com)",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://utopia-game.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://utopia-game.com/*"],
+      "js": ["data/spells.js", "scraper/scrapers.js", "scraper/content_script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

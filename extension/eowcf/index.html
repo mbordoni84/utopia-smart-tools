@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EOWCF Planner - Utopia Smart Tools</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>EOWCF Planner</h1>
+    <p class="subtitle">End-of-War Ceasefire rebuild simulator</p>
+  </header>
+
+  <main>
+    <section class="input-panel">
+      <div class="eowcf-box">
+        <label class="checkbox-inline"><input type="checkbox" id="eowcfActive" checked> End-of-War Ceasefire</label>
+        <div id="eowcfFields" class="eowcf-fields">
+          <div class="form-group">
+            <label for="eowcfStartDate">CF Start Date</label>
+            <input type="text" id="eowcfStartDate" placeholder="e.g. April 5 of YR5">
+          </div>
+          <div class="form-group">
+            <label for="eowcfDuration">Duration (ticks)</label>
+            <input type="number" id="eowcfDuration" value="48" min="24" max="96">
+          </div>
+          <span class="field-hint" id="eowcfDateInfo"></span>
+        </div>
+      </div>
+
+      <h2>Province Setup</h2>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="race">Race</label>
+          <select id="race"></select>
+        </div>
+        <div class="form-group">
+          <label for="personality">Personality</label>
+          <select id="personality"></select>
+        </div>
+        <div class="form-group">
+          <label for="acres">Acres</label>
+          <input type="number" id="acres" value="2000" min="100">
+        </div>
+      </div>
+      <div id="raceSummary" class="honor-summary"></div>
+      <div id="personalitySummary" class="honor-summary"></div>
+
+      <h3>Starting Resources</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="gold">Gold (gc)</label>
+          <input type="number" id="gold" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="food">Food (bushels)</label>
+          <input type="number" id="food" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="runes">Runes</label>
+          <input type="number" id="runes" value="0" min="0">
+        </div>
+      </div>
+
+      <h3>Starting Population</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="peasants">Peasants</label>
+          <input type="number" id="peasants" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="soldiers">Soldiers</label>
+          <input type="number" id="soldiers" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="offSpecs">Off Specs</label>
+          <input type="number" id="offSpecs" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="defSpecs">Def Specs</label>
+          <input type="number" id="defSpecs" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="elites">Elites</label>
+          <input type="number" id="elites" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="thieves">Thieves</label>
+          <input type="number" id="thieves" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="wizards">Wizards</label>
+          <input type="number" id="wizards" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label for="prisoners">Prisoners</label>
+          <input type="number" id="prisoners" value="0" min="0">
+        </div>
+      </div>
+
+      <h3>Buildings</h3>
+      <div class="form-grid" id="buildingsGrid">
+        <!-- Populated by JS -->
+      </div>
+
+      <h3>Sciences (% bonus)</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="sciAlchemy">Alchemy</label>
+          <input type="number" id="sciAlchemy" value="0" min="0" step="0.1">
+          <span class="field-hint">Income</span>
+        </div>
+        <div class="form-group">
+          <label for="sciTools">Tools</label>
+          <input type="number" id="sciTools" value="0" min="0" step="0.1">
+          <span class="field-hint">Building Effectiveness</span>
+        </div>
+        <div class="form-group">
+          <label for="sciProduction">Production</label>
+          <input type="number" id="sciProduction" value="0" min="0" step="0.1">
+          <span class="field-hint">Food & Rune Production</span>
+        </div>
+        <div class="form-group">
+          <label for="sciHousing">Housing</label>
+          <input type="number" id="sciHousing" value="0" min="0" step="0.1">
+          <span class="field-hint">Population Limits</span>
+        </div>
+        <div class="form-group">
+          <label for="sciBookkeeping">Bookkeeping</label>
+          <input type="number" id="sciBookkeeping" value="0" min="0" step="0.1">
+          <span class="field-hint">Wage Reduction</span>
+        </div>
+        <div class="form-group">
+          <label for="sciHeroism">Heroism</label>
+          <input type="number" id="sciHeroism" value="0" min="0" step="0.1">
+          <span class="field-hint">Draft Speed & Draft Costs</span>
+        </div>
+        <div class="form-group">
+          <label for="sciValor">Valor</label>
+          <input type="number" id="sciValor" value="0" min="0" step="0.1">
+          <span class="field-hint">Train Time & Dragon Slaying</span>
+        </div>
+        <div class="form-group">
+          <label for="sciArtisan">Artisan</label>
+          <input type="number" id="sciArtisan" value="0" min="0" step="0.1">
+          <span class="field-hint">Construction Time & Cost</span>
+        </div>
+      </div>
+
+      <h3>Active Spells / Effects</h3>
+      <div class="form-grid" id="spellsGrid">
+        <!-- Populated dynamically from scraped fading spells -->
+      </div>
+      <div id="spellsHint" class="honor-summary">
+        <span>Visit the Enchantment page in-game to load available spells</span>
+      </div>
+
+      <h3>Ritual</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="ritual">Active Ritual</label>
+          <select id="ritual">
+            <option value="none">None</option>
+            <option value="ascendency">Ascendency</option>
+            <option value="barrier">Barrier</option>
+            <option value="expedient">Expedient</option>
+            <option value="haste">Haste</option>
+            <option value="havoc">Havoc</option>
+            <option value="onslaught">Onslaught</option>
+            <option value="stalwart">Stalwart</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ritualEffectiveness">Effectiveness (%)</label>
+          <input type="number" id="ritualEffectiveness" value="100" min="0" max="100" step="0.1">
+        </div>
+      </div>
+      <div id="ritualSummary" class="honor-summary"></div>
+
+      <h3>Honor &amp; Wages</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="honorTitle">Honor Title</label>
+          <select id="honorTitle"></select>
+        </div>
+        <div class="form-group">
+          <label for="wageRate">Wage Rate (%)</label>
+          <input type="number" id="wageRate" value="100" min="0" max="200" step="5">
+        </div>
+      </div>
+      <div id="honorSummary" class="honor-summary"></div>
+
+      <h3>Active Dragon</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="dragon">Dragon</label>
+          <select id="dragon">
+            <option value="none">None</option>
+          </select>
+        </div>
+      </div>
+      <div id="dragonSummary" class="honor-summary"></div>
+
+      <h3>War Doctrines</h3>
+      <div id="warDoctrines" class="honor-summary">
+        <span>No data — visit Kingdom Details page</span>
+      </div>
+    </section>
+
+    <section class="output-panel">
+      <h2>Simulation Output</h2>
+      <div id="output" class="output-placeholder">
+        Configure your province above. Simulation results will appear here as formulas are implemented.
+      </div>
+    </section>
+  </main>
+
+  <script src="../data/game_data.js"></script>
+  <script src="../data/spells.js"></script>
+  <script src="../scraper/scrapers.js"></script>
+  <script src="engine.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
