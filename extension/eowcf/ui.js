@@ -488,6 +488,7 @@
   // ---------------------------------------------------------------------------
   function recalculate() {
     const state = Engine.gatherState();
+    if (!state.race || !state.personality) return;
     renderHonorSummary(state.honor);
     renderModSummary('raceSummary', state.race);
     renderModSummary('personalitySummary', state.personality);

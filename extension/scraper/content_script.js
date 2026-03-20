@@ -69,13 +69,24 @@
       }
       merged._pageTimestamps = pageTimestamps;
 
+      function showToast(page) {
+        const el = document.createElement('div');
+        el.textContent = 'Utopia Smart Tools: ' + page + ' scraped!';
+        el.style.cssText = 'position:fixed;top:12px;right:12px;background:#c0392b;color:#fff;padding:8px 16px;border-radius:6px;font:13px sans-serif;z-index:99999;opacity:0.95;pointer-events:none;transition:opacity 0.5s';
+        document.body.appendChild(el);
+        setTimeout(() => { el.style.opacity = '0'; }, 2500);
+        setTimeout(() => { el.remove(); }, 3000);
+      }
+
       if (chrome.storage && chrome.storage.local) {
         chrome.storage.local.set({ gameData: merged }, () => {
           console.log('[Utopia Smart Tools] Scraped', scraped._page, '—', Object.keys(scraped).length, 'fields');
+          showToast(scraped._page);
         });
       } else {
         chrome.runtime.sendMessage({ type: 'setGameData', data: scraped }, () => {
           console.log('[Utopia Smart Tools] Scraped', scraped._page, '—', Object.keys(scraped).length, 'fields (via messaging)');
+          showToast(scraped._page);
         });
       }
     }

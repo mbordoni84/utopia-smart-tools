@@ -350,7 +350,7 @@ const Scrapers = {
     for (const h of headings) {
       if (h.textContent.includes('The Province of')) {
         found = true;
-        const match = h.textContent.match(/The Province of\s+(.+)/i);
+        const match = h.textContent.match(/The Province of\s+(.+?)(?:\s*\(\d+:\d+\).*)?$/i);
         if (match) provinceName = match[1].trim();
         break;
       }

@@ -1,0 +1,106 @@
+UTOPIA SMART TOOLS - Beta Tester Guide
+=======================================
+
+Thank you for helping test! Follow these steps carefully.
+The extension works on Chrome, Comet, Brave, and other Chromium browsers.
+
+
+PART 1: INSTALL THE EXTENSION
+------------------------------
+
+1. You will receive a folder called "extension". Save it somewhere on your computer
+   (for example, your Desktop or Documents folder). Do NOT rename or move it later.
+
+2. Open your browser and type this in the address bar:
+   chrome://extensions
+
+3. In the top-right corner, turn ON "Developer mode" (it's a toggle switch).
+
+4. Click the "Load unpacked" button that appears in the top-left.
+
+5. Select the "extension" folder you saved in step 1. Click "Select Folder".
+
+6. You should now see "Utopia Smart Tools" in your extensions list.
+   If it shows any errors, let me know.
+
+7. (Optional) Click the puzzle piece icon in the browser toolbar and pin
+   "Utopia Smart Tools" for easy access.
+
+
+PART 2: SCRAPE YOUR GAME DATA
+-------------------------------
+
+The extension reads data from your game pages. You need to visit specific pages
+so it can collect the information it needs.
+
+1. Log into Utopia (utopia-game.com) as normal.
+
+2. Visit EACH of these pages, one by one (order does not matter):
+   - Throne
+   - Affairs of the State
+   - Military
+   - Build (Council page)
+   - Science
+   - Train Army
+   - Kingdom Details
+
+3. Each time a page is successfully read, you will see a small red popup
+   in the top-right corner saying "Utopia Smart Tools: [page] scraped!"
+   Wait for it to appear before moving to the next page.
+
+4. You only need to do this once per session. The data is saved automatically.
+   If you make changes in-game (build, train, cast spells), revisit that page
+   so the extension picks up the new data.
+
+
+PART 3: USE THE EOWCF PLANNER
+-------------------------------
+
+1. Click the Utopia Smart Tools icon in your browser toolbar (the puzzle piece
+   icon, or the pinned icon if you pinned it in step 7 above).
+
+2. Click "Open EOWCF Planner". A new tab will open with the planner.
+
+3. Click the "Import from Game" button (top of the page).
+   All your scraped data should fill in automatically.
+
+4. Check that the values look correct: race, personality, acres, buildings, etc.
+
+5. The right side of the page shows the simulation results:
+   income, wages, food, runes, population, and buildings info.
+
+
+PART 4: EXPORT DEBUG FILE
+---------------------------
+
+This is the most important part for testing! The debug file helps us
+compare what the game shows vs what our formulas calculate.
+
+1. BEFORE exporting, make sure you have visited all the pages listed in Part 2.
+   The more pages you visit, the more data we can compare.
+
+2. In the EOWCF Planner, click the "Debug JSON" button (bottom of the page).
+
+3. A file will be downloaded to your computer. It will be named something like:
+   debug_YourProvinceName_YourRace_20260320_2149.json
+
+4. Send me this file! That's it.
+
+
+IMPORTANT NOTES
+----------------
+
+- Visit the Throne page FIRST if possible. It contains the most important data
+  (spells, ritual, honor, race, personality).
+
+- If you are in an End-of-War Ceasefire, check the "End-of-War Ceasefire" box
+  in the planner and fill in the CF Start Date manually.
+
+- If something looks wrong or the popup doesn't appear on a page,
+  try refreshing the page and waiting a few seconds.
+
+- If you want to test again later (e.g. after building or training),
+  just revisit the changed pages and export a new debug file.
+
+- You do NOT need to close and reopen the planner. Just click "Import from Game"
+  again to refresh the data.
