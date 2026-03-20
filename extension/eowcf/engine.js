@@ -163,11 +163,14 @@ const Engine = {
   // Total jobs = sum of (building count * jobs per building) for all types.
   // ---------------------------------------------------------------------------
   calcTotalJobs(state) {
+    const inC = state.inConstruction || {};
     let jobs = 0;
     for (const [key, count] of Object.entries(state.buildings)) {
       const bldData = GAME_DATA.buildings[key];
       if (bldData && bldData.jobs) {
-        jobs += bldData.jobs * count;
+        // Buildings in construction do NOT provide jobs
+        const built = count - (inC[key] || 0);
+        jobs += bldData.jobs * built;
       }
     }
     return jobs;
@@ -984,7 +987,10 @@ const Engine = {
       wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100,
 
       // Units in training (from military page scraper)
-      inTraining: window._inTraining || {}
+      inTraining: window._inTraining || {},
+
+      // Buildings in construction (from buildings page scraper)
+      inConstruction: window._inConstruction || {}
     };
 
     state.honor = this.getHonorMods(honorTitleIndex, state.race, state.personality);
