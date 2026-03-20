@@ -128,43 +128,28 @@
   const spellsHint = document.getElementById('spellsHint');
 
   /**
-   * Render spell checkboxes. If fadingSpells were scraped from the enchantment
-   * page, only those are shown. Otherwise falls back to all engine-relevant
-   * spells from SPELL_DATA plus all offensive spells.
+   * Render spell checkboxes for all spells in SPELL_DATA.
+   * Shows self (good) spells first, then offensive (bad) spells.
+   * Active spells are pre-checked with remaining duration shown.
    *
-   * @param {Array} fadingSpells - [{key, name}] from scraper (optional)
-   * @param {Object} activeSpells - {SPELL_KEY: {remaining}} or {SPELL_KEY: true}
+   * @param {Object} activeSpells - {SPELL_KEY: {remaining}} from throne scraper
    */
-  function renderSpellCheckboxes(fadingSpells, activeSpells) {
+  function renderSpellCheckboxes(activeSpells) {
     spellsGrid.innerHTML = '';
     activeSpells = activeSpells || {};
 
-    let spellList;
-    if (fadingSpells && fadingSpells.length > 0) {
-      // Use scraped list — only spells available to this race/personality
-      spellList = fadingSpells.map(s => ({
-        key: s.key,
-        name: s.name,
-        type: (typeof SPELL_DATA !== 'undefined' && SPELL_DATA[s.key]) ? SPELL_DATA[s.key].type : 'self'
-      }));
-      spellsHint.style.display = 'none';
-    } else {
-      // Fallback: show all engine-relevant spells + all offensive spells
-      spellList = [];
-      if (typeof SPELL_DATA !== 'undefined') {
-        for (const [key, spell] of Object.entries(SPELL_DATA)) {
-          const hasEngineEffect = spell.engineEffects && Object.keys(spell.engineEffects).length > 0;
-          if (hasEngineEffect || spell.type === 'offensive') {
-            spellList.push({ key, name: spell.name, type: spell.type });
-          }
-        }
-      }
-      spellsHint.style.display = '';
-    }
+    if (typeof SPELL_DATA === 'undefined') return;
 
-    // Group: self spells first, then offensive
-    const selfSpells = spellList.filter(s => s.type === 'self');
-    const offensiveSpells = spellList.filter(s => s.type === 'offensive');
+    const selfSpells = [];
+    const offensiveSpells = [];
+    for (const [key, spell] of Object.entries(SPELL_DATA)) {
+      const entry = { key, name: spell.name, type: spell.type };
+      if (spell.type === 'offensive') {
+        offensiveSpells.push(entry);
+      } else {
+        selfSpells.push(entry);
+      }
+    }
 
     function addSpellCheckbox(spell) {
       const div = document.createElement('div');
@@ -174,17 +159,24 @@
       const durationText = remaining > 0 ? ` (${remaining} ticks)` : '';
       const typeLabel = spell.type === 'offensive' ? ' <span class="spell-offensive">[enemy]</span>' : '';
       div.innerHTML = `<label><input type="checkbox" id="spell_${spell.key}"${isActive ? ' checked' : ''}> ${spell.name}${typeLabel}${durationText}</label>`;
+      div.querySelector('input').addEventListener('change', recalculate);
       spellsGrid.appendChild(div);
     }
 
     for (const s of selfSpells) addSpellCheckbox(s);
     if (offensiveSpells.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'spell-section-label';
+      divider.textContent = 'Enemy Spells (bad)';
+      spellsGrid.appendChild(divider);
       for (const s of offensiveSpells) addSpellCheckbox(s);
     }
+
+    spellsHint.style.display = 'none';
   }
 
-  // Initial render — fallback mode (no scraped data yet)
-  renderSpellCheckboxes(null, null);
+  // Initial render
+  renderSpellCheckboxes(null);
 
   // ---------------------------------------------------------------------------
   // RACE-SPECIFIC UNIT LABELS
@@ -400,6 +392,95 @@
   }
 
   // ---------------------------------------------------------------------------
+  // COMPARISON PAIRS GENERATOR
+  // ---------------------------------------------------------------------------
+  // Builds an array of { label, game, engine, delta, pctDiff } objects by
+  // comparing scraped game values against engine calculations.
+  // "Yesterday" on the State page = 1 tick, so engine per-tick values compare
+  // directly without multiplication.
+  // ---------------------------------------------------------------------------
+  function buildComparisons(scraped, income, wages, food, runes, pop, buildTime, buildCost, razeCost) {
+    const pairs = [];
+    if (!scraped) return pairs;
+
+    function add(label, gameVal, engineVal) {
+      if (gameVal == null || engineVal == null) return;
+      const g = Math.round(gameVal);
+      const e = Math.round(engineVal);
+      const delta = e - g;
+      const pctDiff = g !== 0 ? ((delta / g) * 100).toFixed(2) + '%' : (delta === 0 ? '0%' : 'N/A');
+      pairs.push({ label, game: g, engine: e, delta, pctDiff });
+    }
+
+    // --- Direct stats comparisons ---
+    add('Max Population', scraped.maxPop, pop.maxPop);
+
+    // --- Current projected values (from State page stats table) ---
+    // dailyIncome/dailyWages reflect the game's current state more accurately
+    // than "yesterday" history, which may have had different unit counts/spells.
+    add('Income (projected)', scraped.dailyIncome, income.modifiedIncome);
+    add('Wages (projected)', scraped.dailyWages, wages.modifiedWages);
+    if (scraped.dailyIncome != null && scraped.dailyWages != null) {
+      add('Net Gold (projected)', scraped.dailyIncome - scraped.dailyWages,
+        income.modifiedIncome - wages.modifiedWages);
+    }
+
+    // --- Historical table comparisons (yesterday = last completed tick) ---
+    // Note: "yesterday" values reflect a past game state — unit counts, spells,
+    // and gradual modifiers (BE, effective wage rate) may have been different.
+    const h = scraped.stateHistory;
+    if (h) {
+      add('Income (yesterday)', h.income && h.income.yesterday, income.modifiedIncome);
+      add('Wages (yesterday)', h.wages && h.wages.yesterday, wages.modifiedWages);
+      add('Food Produced per tick', h.foodGrown && h.foodGrown.yesterday,
+        food.modifiedFoodProduction);
+      add('Food Consumed per tick', h.foodNeeded && h.foodNeeded.yesterday,
+        food.foodConsumed);
+      add('Food Decayed per tick', h.foodDecayed && h.foodDecayed.yesterday,
+        food.foodDecay);
+      add('Net Food per tick', h.netFoodChange && h.netFoodChange.yesterday,
+        food.netFood);
+      add('Runes Produced per tick', h.runesProduced && h.runesProduced.yesterday,
+        runes.modifiedRuneProduction);
+      add('Runes Decayed per tick', h.runesDecayed && h.runesDecayed.yesterday,
+        runes.runeDecay);
+      add('Net Runes per tick', h.netRuneChange && h.netRuneChange.yesterday,
+        runes.netRunes);
+      // Peasant Change not compared: game value is net (births - drafts - deaths),
+      // engine calculates births only. Not comparable when drafting occurs.
+    }
+
+    // --- Building Efficiency (from buildings page or throne) ---
+    if (scraped.buildingEfficiencyPct != null) {
+      add('Building Efficiency %', scraped.buildingEfficiencyPct,
+        income.beResult.be * 100);
+    }
+    // --- BE intermediate values (from buildings page) ---
+    if (scraped.availableWorkers != null) {
+      add('Available Workers', scraped.availableWorkers, income.beResult.availableWorkers);
+    }
+    if (scraped.availableJobs != null) {
+      add('Available Jobs', scraped.availableJobs, income.beResult.totalJobs);
+    }
+    if (scraped.workersNeededForMax != null) {
+      add('Workers Needed for Max BE', scraped.workersNeededForMax, income.beResult.optimalWorkers);
+    }
+
+    // --- Construction (from build page) ---
+    if (scraped.constructionTime != null && buildTime) {
+      add('Construction Time', scraped.constructionTime, buildTime.constructionTime);
+    }
+    if (scraped.constructionCost != null && buildCost) {
+      add('Construction Cost', scraped.constructionCost, buildCost.constructionCost);
+    }
+    if (scraped.razeCost != null && razeCost) {
+      add('Raze Cost', scraped.razeCost, razeCost.razeCost);
+    }
+
+    return pairs;
+  }
+
+  // ---------------------------------------------------------------------------
   // MAIN RECALCULATE FUNCTION
   // ---------------------------------------------------------------------------
   // Called on every input change. Gathers state, runs engine calculations,
@@ -416,6 +497,9 @@
     const income = Engine.calcIncome(state);
     const wages = Engine.calcWages(state);
     const netIncome = income.modifiedIncome - wages.modifiedWages;
+    const buildTime = Engine.calcConstructionTime(state);
+    const buildCost = Engine.calcConstructionCost(state);
+    const razeCost = Engine.calcRazeCost(state);
 
     // Clear previous output
     outputDiv.innerHTML = '';
@@ -592,14 +676,48 @@
       ['Net Peasant Change*', (pop.netPeasantChange >= 0 ? '+' : '') + fmt(pop.netPeasantChange) + '/tick', popClass]
     ].filter(Boolean), '* Birth rate varies ±5% per tick (range 1.95%–2.15%). Expect small differences vs game values.');
 
+    // --- Buildings Card ---
+    renderCard('Buildings', [
+      ['Construction Time', buildTime.constructionTime + ' ticks'],
+      buildTime.raceMod !== 1
+        ? [`Race (${state.race.name})`, 'x' + buildTime.raceMod.toFixed(2)]
+        : null,
+      buildTime.persMod !== 1
+        ? [`Personality (${state.personality.name})`, 'x' + buildTime.persMod.toFixed(2)]
+        : null,
+      buildTime.buildersBoon !== 1
+        ? ["Builder's Boon", 'x0.75']
+        : null,
+      buildTime.ritualMod !== 1
+        ? ['Ritual', 'x' + buildTime.ritualMod.toFixed(3)]
+        : null,
+      buildTime.artisanSci !== 1
+        ? ['Artisan Science', 'x' + buildTime.artisanSci.toFixed(3)]
+        : null,
+      buildTime.dragonMod !== 1
+        ? ['Dragon', 'x' + buildTime.dragonMod.toFixed(2)]
+        : null,
+      ['Construction Cost', fmt(buildCost.constructionCost) + ' gc/acre'],
+      buildCost.millsPct > 0
+        ? ['Mills reduction', '-' + fmtPct(buildCost.millsPct)]
+        : null,
+      buildCost.ritualMod !== 1
+        ? ['Ritual (cost)', 'x' + buildCost.ritualMod.toFixed(3)]
+        : null,
+      ['Raze Cost', fmt(razeCost.razeCost) + ' gc/acre']
+    ].filter(Boolean));
+
     // Store last debug snapshot
+    const scraped = window._scrapedGameData || null;
     window._debugData = {
+      scraped: scraped,
       state: {
         race: state.race.name,
         personality: state.personality.name,
         acres: state.acres,
         buildings: state.buildings,
         inConstruction: window._inConstruction || {},
+        inTraining: state.inTraining || {},
         peasants: state.peasants, soldiers: state.soldiers,
         offSpecs: state.offSpecs, defSpecs: state.defSpecs,
         elites: state.elites, thieves: state.thieves,
@@ -613,13 +731,17 @@
         spellChastity: state.spellChastity, spellBuildBoon: state.spellBuildBoon,
         spellLoveAndPeace: state.spellLoveAndPeace, spellInspireArmy: state.spellInspireArmy,
         spellHerosInspiration: state.spellHerosInspiration, spellGhostWorkers: state.spellGhostWorkers,
+        spellDrought: state.spellDrought, spellGluttony: state.spellGluttony,
+        spellGreed: state.spellGreed, spellBlizzard: state.spellBlizzard,
+        spellRiots: state.spellRiots, spellConstructionDelays: state.spellConstructionDelays,
         ritual: state.ritual, ritualEffectiveness: state.ritualEffectiveness,
         dragon: state.dragon, wageRate: state.wageRate,
         honor: state.honor,
         raceMods: state.race.mods,
         persMods: state.personality.mods
       },
-      income, wages, food, runes, netIncome, pop
+      calculated: { income, wages, food, runes, netIncome, pop, buildTime, buildCost, razeCost },
+      comparisons: buildComparisons(scraped, income, wages, food, runes, pop, buildTime, buildCost, razeCost)
     };
 
   }
@@ -705,6 +827,9 @@
 
       // In-construction data — store globally for engine use
       window._inConstruction = d.inConstruction || {};
+
+      // In-training data — store globally for engine use (food & wages)
+      window._inTraining = d.inTraining || {};
       updateConstructionLabels();
 
       // Exploration data — acres in exploration (barren land in schedule)
@@ -746,35 +871,11 @@
         }
       }
 
-      // Active spells — merge data from throne + enchantment scrapers
-      // Build a combined activeSpells map from all sources
-      const activeSpells = {};
+      // Active spells — scraped from throne page "Duration:" section
+      const activeSpells = d.activeSpells || {};
 
-      // From enchantment page scraper (has remaining ticks)
-      if (d.activeSpells) {
-        for (const [key, info] of Object.entries(d.activeSpells)) {
-          activeSpells[key] = info;
-        }
-      }
-
-      // From throne page scraper (boolean detection, no remaining info)
-      if (d.activeSpellsFromThrone) {
-        for (const [key, val] of Object.entries(d.activeSpellsFromThrone)) {
-          if (val && !activeSpells[key]) activeSpells[key] = true;
-        }
-      }
-
-      // Legacy spell fields from old throne scraper
-      const legacyMap = {
-        spellChastity: 'CHASTITY', spellFertileLands: 'FERTILE_LANDS',
-        spellMinersM: 'MINERS_MYSTIQUE', spellBuildBoon: 'BUILDERS_BOON'
-      };
-      for (const [oldKey, newKey] of Object.entries(legacyMap)) {
-        if (d[oldKey] && !activeSpells[newKey]) activeSpells[newKey] = true;
-      }
-
-      // Render spell checkboxes with scraped fading spells list
-      renderSpellCheckboxes(d.fadingSpells || null, activeSpells);
+      // Render spell checkboxes showing all spells (self + offensive)
+      renderSpellCheckboxes(activeSpells);
 
       // Active ritual
       if (d.ritual) {
@@ -794,7 +895,11 @@
         const end = Scrapers.parseUtopianDate(d.eowcfEndDate);
         if (current && end) {
           const ticksLeft = Scrapers.utopianDateToTicks(end) - Scrapers.utopianDateToTicks(current);
-          fill('eowcfDuration', ticksLeft > 0 ? ticksLeft : 0);
+          const cfActive = ticksLeft > 0;
+          fill('eowcfDuration', cfActive ? ticksLeft : 0);
+          eowcfCheckbox.checked = cfActive;
+          toggleEowcfFields();
+          saveEowcfState();
         }
       }
 
@@ -813,6 +918,9 @@
           .map(wd => `<span>${wd.effect} <strong>${wd.bonus}</strong></span>`)
           .join(' ');
       }
+
+      // Store raw scraped data for debug JSON
+      window._scrapedGameData = d;
 
       showDataAge(d);
 
@@ -844,8 +952,8 @@
     if (d && d._pageTimestamps) {
       const pageLabels = {
         throne: 'Throne', state: 'State', military: 'Military',
-        buildings: 'Buildings', science: 'Science', ritual: 'Ritual',
-        trainArmy: 'Train', enchantment: 'Enchantment'
+        buildings: 'Buildings', science: 'Science',
+        trainArmy: 'Train', kingdomDetails: 'Kingdom'
       };
       const now = Date.now();
       const parts = [];
@@ -877,12 +985,24 @@
   document.getElementById('importBtn').addEventListener('click', importGameData);
   document.getElementById('debugBtn').addEventListener('click', () => {
     const json = JSON.stringify(window._debugData || {}, null, 2);
+    // Build filename: province_race_YYYYMMDD_HHMM.json
+    const d = window._debugData || {};
+    const name = (d.scraped && d.scraped.provinceName) || 'unknown';
+    const race = (d.state && d.state.race) || '';
+    const now = new Date();
+    const ts = now.getFullYear()
+      + String(now.getMonth() + 1).padStart(2, '0')
+      + String(now.getDate()).padStart(2, '0')
+      + '_' + String(now.getHours()).padStart(2, '0')
+      + String(now.getMinutes()).padStart(2, '0');
+    const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `debug_${safeName}_${race}_${ts}.json`;
     // Download as file
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'eowcf_debug.json';
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
     // Also copy to clipboard

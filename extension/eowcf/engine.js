@@ -113,9 +113,10 @@ const Engine = {
 
     // Base BE formula: ranges from 50% (no workers) to 100% (fully staffed)
     const raceBE = state.race.mods.buildingEfficiency;
+    const persBE = state.personality.mods.buildingEfficiency || 1;
     const toolsSci = 1 + (state.sciTools / 100); // Tools science increases BE
 
-    let be = (0.5 * (1 + pctJobs)) * raceBE * toolsSci;
+    let be = (0.5 * (1 + pctJobs)) * raceBE * persBE * toolsSci;
 
     // Ritual BE bonus (e.g. Expedient: +20% BE), scaled by effectiveness
     let ritualBEMod = 1;
@@ -132,6 +133,11 @@ const Engine = {
       dragonBEMod = 1 + dragonData.effects.buildingEfficiency;
       be *= dragonBEMod;
     }
+
+    // Blizzard: -10% BE. Construction Delays: -10% BE.
+    const blizzardMod = state.spellBlizzard ? 0.90 : 1;
+    const constructionDelaysMod = state.spellConstructionDelays ? 0.90 : 1;
+    be *= blizzardMod * constructionDelaysMod;
 
     return {
       be: Math.min(be, 1.5), // Practical cap to avoid unrealistic values
@@ -162,6 +168,136 @@ const Engine = {
       }
     }
     return jobs;
+  },
+
+  // ---------------------------------------------------------------------------
+  // CONSTRUCTION TIME
+  // ---------------------------------------------------------------------------
+  // Wiki: lines 2713-2724
+  //
+  // Construction Time = 16 * Race * Personality * Builders Boon * Ritual *
+  //                     Artisan Science * Dragon
+  //
+  // Rounding: .5 rounds up, below .5 rounds down (standard Math.round)
+  // ---------------------------------------------------------------------------
+  calcConstructionTime(state) {
+    const base = 16;
+    const raceMod = state.race.mods.buildTime || 1;
+    const persMod = state.personality.mods.buildTime || 1;
+    const buildersBoon = state.spellBuildBoon ? 0.75 : 1;
+
+    // Ritual: Expedient -25% time, Haste -25% time (scaled by effectiveness)
+    let ritualMod = 1;
+    const ritualData = GAME_DATA.rituals[state.ritual];
+    if (ritualData && ritualData.effects.constructionTime) {
+      ritualMod = 1 + ritualData.effects.constructionTime * (state.ritualEffectiveness || 1);
+    }
+
+    // Artisan science reduces construction time
+    const artisanSci = 1 - (state.sciArtisan / 100);
+
+    // Celestite Dragon: +50% build cost and time
+    let dragonMod = 1;
+    const dragonData = GAME_DATA.dragons[state.dragon];
+    if (dragonData && dragonData.effects && dragonData.effects.buildCostTime) {
+      dragonMod = 1 + dragonData.effects.buildCostTime;
+    }
+
+    const rawTime = base * raceMod * persMod * buildersBoon * ritualMod * artisanSci * dragonMod;
+    const constructionTime = Math.round(rawTime);
+
+    return {
+      base,
+      raceMod,
+      persMod,
+      buildersBoon,
+      ritualMod,
+      artisanSci,
+      dragonMod,
+      rawTime,
+      constructionTime
+    };
+  },
+
+  // ---------------------------------------------------------------------------
+  // CONSTRUCTION COST
+  // ---------------------------------------------------------------------------
+  // Wiki: lines 2726-2733
+  //
+  // Construction Cost = 0.05 * (land + 10000) * Race * Personality * Mills *
+  //                     Ritual * Artisan Science * Dragon
+  // ---------------------------------------------------------------------------
+  calcConstructionCost(state) {
+    const acres = state.acres;
+    const baseCost = 0.05 * (acres + 10000);
+    const raceMod = state.race.mods.buildCost || 1;
+    const persMod = state.personality.mods.buildCost || 1;
+
+    // Mills percentage-based reduction (uses same diminishing returns formula)
+    const beResult = this.calcBE(state);
+    const mills = state.buildings.mills || 0;
+    const millsPct = this.calcPctBuildingEffect(
+      GAME_DATA.buildings.mills.pctEffect[0].base, // base: 4
+      mills, acres, beResult.be
+    );
+    const millsMod = 1 - (millsPct / 100);
+
+    // Ritual: Expedient -25% cost (scaled by effectiveness)
+    let ritualMod = 1;
+    const ritualData = GAME_DATA.rituals[state.ritual];
+    if (ritualData && ritualData.effects.constructionCost) {
+      ritualMod = 1 + ritualData.effects.constructionCost * (state.ritualEffectiveness || 1);
+    }
+
+    // Artisan science reduces construction cost
+    const artisanSci = 1 - (state.sciArtisan / 100);
+
+    // Celestite Dragon: +50% build cost and time
+    let dragonMod = 1;
+    const dragonData = GAME_DATA.dragons[state.dragon];
+    if (dragonData && dragonData.effects && dragonData.effects.buildCostTime) {
+      dragonMod = 1 + dragonData.effects.buildCostTime;
+    }
+
+    const constructionCost = Math.round(baseCost * raceMod * persMod * millsMod * ritualMod * artisanSci * dragonMod);
+
+    return {
+      acres,
+      baseCost,
+      raceMod,
+      persMod,
+      millsPct,
+      millsMod,
+      ritualMod,
+      artisanSci,
+      dragonMod,
+      constructionCost
+    };
+  },
+
+  // ---------------------------------------------------------------------------
+  // RAZE COST
+  // ---------------------------------------------------------------------------
+  // Wiki: line 2736
+  //
+  // Raze Cost = (300 + 0.05 * land) * Artisan Science * Race * Personality
+  // ---------------------------------------------------------------------------
+  calcRazeCost(state) {
+    const acres = state.acres;
+    const baseCost = 300 + (0.05 * acres);
+    const raceMod = state.race.mods.buildCost || 1;
+    const persMod = state.personality.mods.buildCost || 1;
+    const artisanSci = 1 - (state.sciArtisan / 100);
+    const razeCost = Math.round(baseCost * artisanSci * raceMod * persMod);
+
+    return {
+      acres,
+      baseCost,
+      raceMod,
+      persMod,
+      artisanSci,
+      razeCost
+    };
   },
 
   // ---------------------------------------------------------------------------
@@ -268,6 +404,9 @@ const Engine = {
       dragonIncomeMod = 1 + dragonData.effects.income;
     }
 
+    // Riots spell: -10% Income
+    const riotsMod = state.spellRiots ? 0.90 : 1;
+
     // --- Modified (final) income ---
     const modifiedIncome = rawIncome
       * (1 + bankPctBonus / 100)  // Bank % is an additive bonus (e.g. 24% => 1.24x)
@@ -275,7 +414,8 @@ const Engine = {
       * honorMod
       * raceMod
       * persMod
-      * dragonIncomeMod;
+      * dragonIncomeMod
+      * riotsMod;
 
     return {
       beResult,
@@ -325,9 +465,10 @@ const Engine = {
     const beResult = this.calcBE(state);
     const be = beResult.be;
 
-    // Only specialists and elites cost wages
+    // Specialists and elites cost wages
     const specCount = (state.offSpecs || 0) + (state.defSpecs || 0);
     const eliteCount = state.elites || 0;
+    // Note: units in training do NOT pay wages (verified against game data)
 
     // Base wages before modifiers
     const baseWages = (specCount * 0.5) + (eliteCount * 0.75);
@@ -373,6 +514,9 @@ const Engine = {
       spellWageMod = 0.85;
     }
 
+    // Greed spell: +25% Military Wages and Draft Costs
+    const greedMod = state.spellGreed ? 1.25 : 1;
+
     // Final wages calculation
     const modifiedWages = baseWages
       * wageRate
@@ -382,7 +526,8 @@ const Engine = {
       * persWageMod
       * ritualMod
       * dragonWageMod
-      * spellWageMod;
+      * spellWageMod
+      * greedMod;
 
     return {
       specCount,
@@ -442,17 +587,25 @@ const Engine = {
     // Fertile Lands spell: +25% food production
     const fertileMod = state.spellFertileLands ? 1.25 : 1;
 
+    // Drought spell: -25% food production
+    const droughtMod = state.spellDrought ? 0.75 : 1;
+
     // Honor food modifier
     const honorFoodMod = (state.honor && state.honor.food) || 1;
 
-    const modifiedFoodProduction = baseFoodProduction * prodSci * fertileMod * honorFoodMod;
+    const modifiedFoodProduction = baseFoodProduction * prodSci * fertileMod * droughtMod * honorFoodMod;
 
     // --- Food Consumed ---
-    // Total Pop = peasants + soldiers + offSpecs + defSpecs + elites + thieves + wizards + prisoners
+    // Current Population = all military + peasants + in-training units
+    // Prisoners do NOT count toward population (wiki: "Prisoners do not add to the population")
+    const inT = state.inTraining || {};
     const totalPop = state.peasants + state.soldiers + state.offSpecs
-      + state.defSpecs + state.elites + state.thieves + state.wizards + state.prisoners;
+      + state.defSpecs + state.elites + state.thieves + state.wizards
+      + (inT.offSpecs || 0) + (inT.defSpecs || 0) + (inT.elites || 0)
+      + (inT.thieves || 0);
     const raceFoodMod = state.race.mods.foodConsumption;
-    const foodConsumed = totalPop * 0.25 * raceFoodMod;
+    const gluttonyMod = state.spellGluttony ? 1.25 : 1;
+    const foodConsumed = totalPop * 0.25 * raceFoodMod * gluttonyMod;
 
     // --- Food Decay ---
     // 1% of stored food decays each tick
@@ -572,9 +725,12 @@ const Engine = {
     const maxPop = Math.floor(rawLivingSpace * raceMaxPop * persMaxPop * housingSci * honorPop);
 
     // --- Current Population ---
+    // Includes units in training (wiki line 3019). Prisoners do NOT count (wiki line 3024).
+    const inT = state.inTraining || {};
     const currentPop = state.peasants + state.soldiers + state.offSpecs
-      + state.defSpecs + state.elites + state.thieves + state.wizards;
-    // Note: prisoners do NOT count toward population (wiki line 3368)
+      + state.defSpecs + state.elites + state.thieves + state.wizards
+      + (inT.offSpecs || 0) + (inT.defSpecs || 0) + (inT.elites || 0)
+      + (inT.thieves || 0);
 
     // --- Birth Rate ---
     // Love and Peace spell: +0.85% additive birth rate bonus
@@ -797,6 +953,7 @@ const Engine = {
 
       // Active spells/effects (boolean toggles)
       // Reads from dynamically-generated checkboxes (spell_SPELL_KEY)
+      // Self spells
       spellChastity: !!document.getElementById('spell_CHASTITY')?.checked,
       spellFertileLands: !!document.getElementById('spell_FERTILE_LANDS')?.checked,
       spellMinersM: !!document.getElementById('spell_MINERS_MYSTIQUE')?.checked,
@@ -805,6 +962,13 @@ const Engine = {
       spellInspireArmy: !!document.getElementById('spell_INSPIRE_ARMY')?.checked,
       spellHerosInspiration: !!document.getElementById('spell_HEROS_INSPIRATION')?.checked,
       spellGhostWorkers: !!document.getElementById('spell_GHOST_WORKERS')?.checked,
+      // Offensive (bad) spells
+      spellDrought: !!document.getElementById('spell_DROUGHT')?.checked,
+      spellGluttony: !!document.getElementById('spell_GLUTTONY')?.checked,
+      spellGreed: !!document.getElementById('spell_GREED')?.checked,
+      spellBlizzard: !!document.getElementById('spell_BLIZZARD')?.checked,
+      spellRiots: !!document.getElementById('spell_RIOTS')?.checked,
+      spellConstructionDelays: !!document.getElementById('spell_CONSTRUCTION_DELAYS')?.checked,
 
       // Ritual selection (string key or 'none')
       ritual: document.getElementById('ritual').value,
@@ -814,7 +978,10 @@ const Engine = {
       dragon: document.getElementById('dragon')?.value || 'none',
 
       // Military wage rate (0-200%, default 100%)
-      wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100
+      wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100,
+
+      // Units in training (from military page scraper)
+      inTraining: window._inTraining || {}
     };
 
     state.honor = this.getHonorMods(honorTitleIndex, state.race, state.personality);

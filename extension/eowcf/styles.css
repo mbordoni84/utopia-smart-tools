@@ -113,6 +113,16 @@ input[type="number"]:focus, select:focus {
   font-weight: normal;
 }
 
+.spell-section-label {
+  grid-column: 1 / -1;
+  color: #f88;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 4px 0 2px;
+  border-top: 1px solid #444;
+  margin-top: 4px;
+}
+
 input[type="checkbox"] {
   accent-color: #c4a35a;
 }

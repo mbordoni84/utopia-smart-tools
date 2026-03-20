@@ -15,9 +15,7 @@
       || Scrapers.scrapeMilitary(doc)
       || Scrapers.scrapeBuildings(doc)
       || Scrapers.scrapeScience(doc)
-      || Scrapers.scrapeRitual(doc)
       || Scrapers.scrapeTrainArmy(doc)
-      || Scrapers.scrapeEnchantment(doc)
       || Scrapers.scrapeKingdomDetails(doc);
 
     if (!scraped) return;
@@ -27,10 +25,13 @@
     if (currentDate) scraped.utopianDate = currentDate;
 
     // Avoid re-saving identical data
+    // Throttle re-scrapes of the same page, but allow if new data has spells
+    // (the Duration section may load after initial page render via AJAX)
     if (window._lastScrapedPage === scraped._page &&
         window._lastScrapedAt && (Date.now() - window._lastScrapedAt) < 2000) {
-      return;
+      if (!scraped.activeSpells || window._lastHadSpells) return;
     }
+    window._lastHadSpells = !!scraped.activeSpells;
     window._lastScrapedPage = scraped._page;
     window._lastScrapedAt = Date.now();
 
@@ -47,16 +48,22 @@
       if (scraped.buildingEffects) {
         scraped.buildingEffects = Object.assign({}, existing.buildingEffects || {}, scraped.buildingEffects);
       }
-      if (scraped.activeSpells) {
-        scraped.activeSpells = Object.assign({}, existing.activeSpells || {}, scraped.activeSpells);
-      }
-      if (scraped.activeSpellsFromThrone) {
-        scraped.activeSpellsFromThrone = Object.assign({}, existing.activeSpellsFromThrone || {}, scraped.activeSpellsFromThrone);
-      }
+      // NOTE: activeSpells is NOT merged with old data — it's a complete snapshot
+      // from the throne page. Replace to prevent expired spells from persisting.
+      // Clean up legacy fields no longer produced by scrapers.
       const merged = Object.assign({}, existing, scraped);
+      delete merged.activeSpellsFromThrone;
+      delete merged.fadingSpells;
+      delete merged.spellFertileLands;
+      delete merged.spellChastity;
+      delete merged.spellMinersM;
+      delete merged.spellBuildBoon;
       merged._lastUpdated = Date.now();
 
+      // Clean up timestamps from removed scrapers
       const pageTimestamps = Object.assign({}, existing._pageTimestamps || {});
+      delete pageTimestamps.enchantment;
+      delete pageTimestamps.ritual;
       if (scraped._page) {
         pageTimestamps[scraped._page] = scraped._scrapedAt || Date.now();
       }

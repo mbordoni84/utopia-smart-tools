@@ -14,7 +14,7 @@
   "content_scripts": [
     {
       "matches": ["https://utopia-game.com/*"],
-      "js": ["data/spells.js", "scraper/scrapers.js", "scraper/content_script.js"],
+      "js": ["scraper/scrapers.js", "scraper/content_script.js"],
       "run_at": "document_idle"
     }
   ]

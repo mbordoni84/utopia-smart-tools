@@ -104,7 +104,9 @@ const Scrapers = {
     // elites
     'drakes': 'elites', 'drows': 'elites', 'berserkers': 'elites',
     'elf lords': 'elites', 'beastmasters': 'elites', 'brutes': 'elites',
-    'knights': 'elites', 'ogres': 'elites', 'ghouls': 'elites'
+    'knights': 'elites', 'ogres': 'elites', 'ghouls': 'elites',
+    // thieves
+    'thieves': 'thieves'
   },
 
   // ---------------------------------------------------------------------------
@@ -149,6 +151,37 @@ const Scrapers = {
   },
 
   // ---------------------------------------------------------------------------
+  // SPELL NAME MAPPING (display name lowercase -> SPELL_DATA key)
+  // ---------------------------------------------------------------------------
+  // Used by throne page scraper to detect active spells from "Duration:" text.
+  // This is self-contained so scrapers.js doesn't depend on spells.js loading.
+  // ---------------------------------------------------------------------------
+  spellNameMap: {
+    'minor protection': 'MINOR_PROTECTION', 'greater protection': 'GREATER_PROTECTION',
+    'magic shield': 'MAGIC_SHIELD', 'fertile lands': 'FERTILE_LANDS',
+    "nature's blessing": 'NATURES_BLESSING', 'love and peace': 'LOVE_AND_PEACE',
+    'divine shield': 'DIVINE_SHIELD', 'quick feet': 'QUICK_FEET',
+    "builders boon": 'BUILDERS_BOON', 'inspire army': 'INSPIRE_ARMY',
+    "hero's inspiration": 'HEROS_INSPIRATION', 'scientific insights': 'SCIENTIFIC_INSIGHTS',
+    'illuminate shadows': 'ILLUMINATE_SHADOWS', 'salvation': 'SALVATION',
+    'wrath': 'WRATH', 'invisibility': 'INVISIBILITY', 'clear sight': 'CLEAR_SIGHT',
+    "mage's fury": 'MAGES_FURY', 'war spoils': 'WAR_SPOILS', 'mind focus': 'MIND_FOCUS',
+    'fanaticism': 'FANATICISM', 'guile': 'GUILE', 'revelation': 'REVELATION',
+    'fountain of knowledge': 'FOUNTAIN_OF_KNOWLEDGE', 'town watch': 'TOWN_WATCH',
+    'aggression': 'AGGRESSION', "miner's mystique": 'MINERS_MYSTIQUE',
+    'ghost workers': 'GHOST_WORKERS', 'mist': 'MIST', 'reflect magic': 'REFLECT_MAGIC',
+    'bloodlust': 'BLOODLUST', 'patriotism': 'PATRIOTISM',
+    // Offensive spells
+    'chastity': 'CHASTITY', 'drought': 'DROUGHT', 'gluttony': 'GLUTTONY',
+    'greed': 'GREED', 'blizzard': 'BLIZZARD', 'storms': 'STORMS',
+    'explosions': 'EXPLOSIONS', 'expose thieves': 'EXPOSE_THIEVES',
+    'pitfalls': 'PITFALLS', 'meteor showers': 'METEOR_SHOWERS',
+    'magic ward': 'MAGIC_WARD', 'sloth': 'SLOTH', 'propaganda': 'PROPAGANDA',
+    'riots': 'RIOTS', 'nightmares': 'NIGHTMARES',
+    'construction delays': 'CONSTRUCTION_DELAYS'
+  },
+
+  // ---------------------------------------------------------------------------
   // SCIENCE NAME MAPPING (display name -> field key for planner)
   // ---------------------------------------------------------------------------
   scienceNameMap: {
@@ -164,10 +197,11 @@ const Scrapers = {
   // ---------------------------------------------------------------------------
   // Detected by: <h2>Affairs of the State</h2>
   //
-  // Extracts from resource bar: gold, food, runes, land
+  // Extracts from resource bar: gold, food, runes, land, NW/Acre
   // Extracts from stats table: peasants, army, thieves, wizards, honor,
-  //   daily income, daily wages
+  //   daily income, daily wages, unemployed, employment, ranks
   // Extracts honor title from greeting text ("Knight Ulysses, I track...")
+  // Extracts historical table: income, wages, food, runes net changes
   // ---------------------------------------------------------------------------
   scrapeState(doc) {
     const heading = doc.querySelector('h2');
@@ -187,6 +221,9 @@ const Scrapers = {
         data.networth = this.parseNum(vals[4].textContent);
         data.acres = this.parseNum(vals[5].textContent);
       }
+      if (vals.length >= 7) {
+        data.networthPerAcre = parseFloat(vals[6].textContent.replace(/,/g, '')) || 0;
+      }
     }
 
     // --- Three-column stats table ---
@@ -203,6 +240,15 @@ const Scrapers = {
       data.dailyWages = this.parseNum(pairs.get('daily wages'));
       data.honor = this.parseNum(pairs.get('current honor'));
       data.unfilledJobs = this.parseNum(pairs.get('unfilled jobs'));
+      data.unemployedPeasants = this.parseNum(pairs.get('unemployed peasants'));
+      const empVal = pairs.get('employment');
+      if (empVal) data.employment = this.parsePct(empVal);
+      const landRank = pairs.get('land rank');
+      if (landRank) data.landRank = landRank;
+      const nwRank = pairs.get('networth rank');
+      if (nwRank) data.networthRank = nwRank;
+      const mapVal = pairs.get('multi-attack protection');
+      if (mapVal) data.multiAttackProtection = mapVal.trim();
     }
 
     // --- Honor title from greeting ---
@@ -216,6 +262,65 @@ const Scrapers = {
           data.honorTitle = title;
           break;
         }
+      }
+    }
+
+    // --- Historical table (Net Change Yesterday / This Month / Last Month) ---
+    // Rows: Our Income, Military Wages, Draft Costs, Net Change (gold),
+    //        Peasants, Food Grown, Food Needed, Food Decayed, Net Change (food),
+    //        Runes Produced, Runes Decayed, Net Change (runes)
+    const gameContent = doc.querySelector('.game-content');
+    if (gameContent) {
+      const tables = gameContent.querySelectorAll('table');
+      for (const table of tables) {
+        // Skip resource bar and stats table
+        if (table.id === 'resource-bar' || table.classList.contains('three-column-stats')) continue;
+
+        const headerRow = table.querySelector('tr');
+        if (!headerRow) continue;
+        const headerText = headerRow.textContent.toLowerCase();
+        if (!headerText.includes('net change yesterday')) continue;
+
+        // Found the historical table
+        data.stateHistory = {};
+        const rowMap = {
+          'our income': 'income',
+          'military wages': 'wages',
+          'draft costs': 'draftCosts',
+          'peasants': 'peasants',
+          'food grown': 'foodGrown',
+          'food needed': 'foodNeeded',
+          'food decayed': 'foodDecayed',
+          'runes produced': 'runesProduced',
+          'runes decayed': 'runesDecayed'
+        };
+        // "Net Change" appears 3 times (gold, food, runes) — track which one
+        let netChangeIdx = 0;
+        const netChangeKeys = ['netGoldChange', 'netFoodChange', 'netRuneChange'];
+
+        const rows = table.querySelectorAll('tr');
+        for (const row of rows) {
+          const th = row.querySelector('th');
+          const tds = row.querySelectorAll('td');
+          if (!th || tds.length < 3) continue;
+
+          const label = th.textContent.trim().toLowerCase();
+          let key = rowMap[label];
+
+          if (!key && label === 'net change') {
+            key = netChangeKeys[netChangeIdx] || null;
+            netChangeIdx++;
+          }
+
+          if (key) {
+            data.stateHistory[key] = {
+              yesterday: this.parseNum(tds[0].textContent),
+              thisMonth: this.parseNum(tds[1].textContent),
+              lastMonth: this.parseNum(tds[2].textContent)
+            };
+          }
+        }
+        break;
       }
     }
 
@@ -241,12 +346,19 @@ const Scrapers = {
   scrapeThrone(doc) {
     const headings = doc.querySelectorAll('h2');
     let found = false;
+    let provinceName = '';
     for (const h of headings) {
-      if (h.textContent.includes('The Province of')) { found = true; break; }
+      if (h.textContent.includes('The Province of')) {
+        found = true;
+        const match = h.textContent.match(/The Province of\s+(.+)/i);
+        if (match) provinceName = match[1].trim();
+        break;
+      }
     }
     if (!found) return null;
 
     const data = { _page: 'throne', _scrapedAt: Date.now() };
+    if (provinceName) data.provinceName = provinceName;
 
     // --- Two-column stats table ---
     const statsTable = doc.querySelector('.two-column-stats');
@@ -270,6 +382,18 @@ const Scrapers = {
         }
       }
 
+      // Building Efficiency — "Building Eff.: 135%"
+      const beVal = pairs.get('building eff.');
+      if (beVal) data.buildingEfficiencyPct = this.parsePct(beVal);
+
+      // War Horses
+      data.warHorses = this.parseNum(pairs.get('war horses'));
+
+      // Trade Balance, Off/Def Points
+      data.tradeBalance = this.parseNum(pairs.get('trade balance'));
+      data.offPoints = this.parseNum(pairs.get('off. points'));
+      data.defPoints = this.parseNum(pairs.get('def. points'));
+
       // Military units — map race-specific names to generic types
       data.soldiers = this.parseNum(pairs.get('soldiers'));
       data.prisoners = this.parseNum(pairs.get('prisoners'));
@@ -288,22 +412,26 @@ const Scrapers = {
     if (gameContent) {
       const text = gameContent.textContent;
 
-      // Detect active spells from "Duration:" section using SPELL_DATA
-      // Detects all known fading spells dynamically
-      data.activeSpellsFromThrone = {};
-      if (typeof SPELL_DATA !== 'undefined') {
-        for (const [key, spell] of Object.entries(SPELL_DATA)) {
-          const escapedName = spell.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          if (new RegExp(escapedName, 'i').test(text)) {
-            data.activeSpellsFromThrone[key] = true;
+      // Active spell detection from the throne page text.
+      // The "Duration:" section lists active spells with remaining days, e.g.:
+      //   "Duration: Magic Shield ( 3 days ) Inspire Army ( 4 days )"
+      const fullText = doc.body ? doc.body.textContent : text;
+      const spellSearchText = fullText.includes('Duration:') ? fullText : text;
+      if (spellSearchText.includes('Duration:')) {
+        data.activeSpells = {};
+        const dIdx = spellSearchText.indexOf('Duration:');
+        const durationText = spellSearchText.substring(dIdx).toLowerCase();
+        for (const [spellName, spellKey] of Object.entries(this.spellNameMap)) {
+          const idx = durationText.indexOf(spellName);
+          if (idx !== -1) {
+            const after = durationText.substring(idx + spellName.length);
+            const daysMatch = after.match(/\(\s*(\d+)\s*days?\s*\)/i);
+            const remaining = daysMatch ? parseInt(daysMatch[1]) : 0;
+            data.activeSpells[spellKey] = { remaining };
           }
         }
+        console.log('[Utopia Smart Tools] Detected active spells:', Object.keys(data.activeSpells).join(', ') || 'none');
       }
-      // Legacy fields for backward compat
-      data.spellFertileLands = /Fertile Lands/i.test(text);
-      data.spellChastity = /Chastity/i.test(text);
-      data.spellMinersM = /Miner.s Mystique/i.test(text);
-      data.spellBuildBoon = /Builder.s Boon/i.test(text);
 
       // Active ritual from advice-message paragraphs
       // "We are covered by the Expedient ritual..."
@@ -315,6 +443,11 @@ const Scrapers = {
         for (const r of ritualNames) {
           if (msgLower.includes(r + ' ritual')) {
             data.ritual = r;
+            // "with 88.3% effectiveness left!"
+            const effMatch = msgText.match(/([\d.]+)%\s*effectiveness/i);
+            if (effMatch) {
+              data.ritualEffectiveness = parseFloat(effMatch[1]);
+            }
             break;
           }
         }
@@ -384,6 +517,33 @@ const Scrapers = {
       }
     }
 
+    // --- Training Schedule ---
+    // table.schedule has 24 tick columns per unit type (same format as building schedule).
+    // Units in training count toward population and food consumption.
+    const scheduleTable = doc.querySelector('table.schedule');
+    if (scheduleTable) {
+      data.inTraining = {};
+      const rows = scheduleTable.querySelectorAll('tbody tr');
+      for (const row of rows) {
+        const th = row.querySelector('th');
+        if (!th) continue;
+        const name = th.textContent.trim().toLowerCase();
+        // Map race-specific names to generic types
+        const unitType = this.unitNameMap[name];
+        if (!unitType) continue;
+
+        const tds = row.querySelectorAll('td');
+        let total = 0;
+        for (const td of tds) {
+          const val = parseInt(td.textContent.trim());
+          if (val > 0) total += val;
+        }
+        if (total > 0) {
+          data.inTraining[unitType] = total;
+        }
+      }
+    }
+
     return data;
   },
 
@@ -413,7 +573,8 @@ const Scrapers = {
     const data = { _page: 'buildings', _scrapedAt: Date.now(), buildings: {}, buildingEffects: {} };
 
     // Search all tables for rows containing building names
-    const allRows = doc.querySelectorAll('table tr');
+    // Skip schedule tables (they have 24 tick columns, not building counts)
+    const allRows = doc.querySelectorAll('table:not(.schedule) tr');
     for (const row of allRows) {
       const th = row.querySelector('th');
       const tds = row.querySelectorAll('td');
@@ -487,6 +648,31 @@ const Scrapers = {
           }
         }
       }
+    }
+
+    // --- Statistics table (BE details) ---
+    // Table.two-column-stats with: Available Workers, Building Efficiency,
+    // Available Jobs, Workers Needed for Max. Efficiency
+    const statsTable = doc.querySelector('.two-column-stats');
+    if (statsTable) {
+      const pairs = this.extractThTdPairs(statsTable);
+      const aw = pairs.get('available workers');
+      if (aw != null) data.availableWorkers = this.parseNum(aw);
+      const be = pairs.get('building efficiency');
+      if (be != null) data.buildingEfficiencyPct = this.parsePct(be);
+      const aj = pairs.get('available jobs');
+      if (aj != null) data.availableJobs = this.parseNum(aj);
+      const wn = pairs.get('workers needed for max. efficiency');
+      if (wn != null) data.workersNeededForMax = this.parseNum(wn);
+      // Build page fields
+      const cc = pairs.get('construction cost');
+      if (cc != null) data.constructionCost = this.parseNum(cc);
+      const ct = pairs.get('construction time');
+      if (ct != null) data.constructionTime = this.parseNum(ct);
+      const rc = pairs.get('raze cost');
+      if (rc != null) data.razeCost = this.parseNum(rc);
+      const fbc = pairs.get('free building credits');
+      if (fbc != null) data.freeBuildingCredits = this.parseNum(fbc);
     }
 
     return Object.keys(data.buildings).length > 0 ? data : null;

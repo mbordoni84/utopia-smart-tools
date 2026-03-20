@@ -14,7 +14,7 @@
 // Spells with no engine-relevant effects have `engineEffects: {}`.
 // =============================================================================
 
-const SPELL_DATA = {
+var SPELL_DATA = {
 
   // =========================================================================
   // SELF FADING SPELLS
@@ -376,5 +376,38 @@ const SPELL_DATA = {
     avgDuration: 6,
     description: '-50% Drafting Rate, +100% Draft Cost',
     engineEffects: {}
+  },
+
+  PROPAGANDA: {
+    name: 'Propaganda',
+    type: 'offensive',
+    avgDuration: 6,
+    description: 'Kills peasants each tick',
+    engineEffects: {}
+  },
+
+  RIOTS: {
+    name: 'Riots',
+    type: 'offensive',
+    avgDuration: 6,
+    description: '-10% Income',
+    engineEffects: { income: -0.10 }
+  },
+
+  NIGHTMARES: {
+    name: 'Nightmares',
+    type: 'offensive',
+    avgDuration: 6,
+    description: 'Reduces WPA and TPA',
+    engineEffects: {}
+  },
+
+  // Artisan personality unique — passive debuff on target after attack
+  CONSTRUCTION_DELAYS: {
+    name: 'Construction Delays',
+    type: 'offensive',
+    avgDuration: 6,
+    description: '-10% Building Efficiency for 6 ticks after attack',
+    engineEffects: { buildingEfficiency: -0.10 }
   }
 };
