@@ -45,7 +45,10 @@ Result cards rendered in DOM
 - **Page detection by content, not URL:** The game's URLs are unreliable, so scrapers identify pages by headings, table structures, and DOM elements (e.g., `<h2>Affairs of the State</h2>` for the state page).
 - **Merge-on-save:** Each scraper returns data for one page. Data is merged into a single `gameData` object in `chrome.storage.local`, preserving fields from other pages. Per-page timestamps track data freshness.
 - **Active spells replace, not merge:** `activeSpells` and `activeSpellsFromThrone` are always complete snapshots — they overwrite old data to prevent expired spells from persisting.
-- **Building counts include WIP:** The game's council_internal page shows built + in-construction combined. The engine uses these combined counts for building effects (flat rates, percentage bonuses). However, **in-construction buildings do NOT provide jobs** — only completed buildings count toward Available Jobs and Optimal Workers for BE.
+- **Building counts include WIP:** The game's council_internal page shows built + in-construction combined. The engine uses these combined counts for building effects (flat rates, percentage bonuses). However, **in-construction buildings do NOT provide jobs** — only completed buildings count toward Available Jobs and Optimal Workers for BE. This has cascading effects:
+  - Fewer jobs → lower Optimal Workers → higher % Jobs Filled → **higher BE** (when understaffed)
+  - Fewer jobs → lower Unfilled Jobs count → **higher effective employment**
+  - Building effects (bank income, farm food, tower runes, training grounds OME, etc.) still use the full count including WIP
 - **Barren Land is derived:** Calculated as `acres - sum(all buildings)`, shown as read-only in the UI.
 
 ### Core Modules
