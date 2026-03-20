@@ -376,7 +376,7 @@ const Scrapers = {
       // Extract personality from suffix
       const rulerLower = ruler.toLowerCase();
       for (const [suffix, persKey] of Object.entries(this.personalitySuffixMap)) {
-        if (rulerLower.endsWith(suffix)) {
+        if (rulerLower.includes(suffix)) {
           data.personality = persKey;
           break;
         }
@@ -493,15 +493,17 @@ const Scrapers = {
         continue;
       }
 
-      // Check for army units
+      // Check for army units — these are "You Own" (at-home) counts.
+      // Do NOT overwrite the main unit keys (soldiers, offSpecs, etc.)
+      // because the throne page provides totals including out-on-attack troops.
+      // Store under atHome_ prefix instead.
       if (pairs.has('soldiers')) {
-        data.soldiers = this.parseNum(pairs.get('soldiers'));
-        data.prisoners = this.parseNum(pairs.get('prisoners'));
-        // Map race-specific names
+        data.atHome_soldiers = this.parseNum(pairs.get('soldiers'));
+        data.atHome_prisoners = this.parseNum(pairs.get('prisoners'));
         for (const [label, value] of pairs) {
           const unitType = this.unitNameMap[label];
           if (unitType) {
-            data[unitType] = this.parseNum(value);
+            data['atHome_' + unitType] = this.parseNum(value);
           }
         }
       }

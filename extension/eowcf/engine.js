@@ -146,10 +146,13 @@ const Engine = {
       pctJobs,
       totalJobs,
       raceBE,
+      persBE,
       toolsSci,
       ritualBEMod,
       dragonBEMod,
-      ghostWorkersMod
+      ghostWorkersMod,
+      blizzardMod,
+      constructionDelaysMod
     };
   },
 

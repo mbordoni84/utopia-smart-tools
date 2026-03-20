@@ -451,9 +451,13 @@
     }
 
     // --- Building Efficiency (from buildings page or throne) ---
+    // Game's displayed BE does NOT include CD or Blizzard malus, so exclude them for comparison
     if (scraped.buildingEfficiencyPct != null) {
+      const beForComparison = income.beResult.be
+        / (income.beResult.constructionDelaysMod || 1)
+        / (income.beResult.blizzardMod || 1);
       add('Building Efficiency %', scraped.buildingEfficiencyPct,
-        income.beResult.be * 100);
+        beForComparison * 100);
     }
     // --- BE intermediate values (from buildings page) ---
     if (scraped.availableWorkers != null) {
@@ -525,7 +529,16 @@
       income.beResult.dragonBEMod !== 1
         ? ['Dragon', 'x' + income.beResult.dragonBEMod.toFixed(2)]
         : null,
-      ['BE', fmtPct(income.beResult.be * 100), 'highlight']
+      income.beResult.blizzardMod !== 1
+        ? ['Blizzard', 'x' + income.beResult.blizzardMod.toFixed(2)]
+        : null,
+      income.beResult.constructionDelaysMod !== 1
+        ? ['Construction Delays', 'x' + income.beResult.constructionDelaysMod.toFixed(2) + ' *']
+        : null,
+      ['BE', fmtPct(income.beResult.be * 100), 'highlight'],
+      income.beResult.constructionDelaysMod !== 1
+        ? ['* Note', 'CD malus is NOT shown in the BE displayed in-game']
+        : null
     ].filter(Boolean));
 
     // --- Income Breakdown Card ---
@@ -811,7 +824,7 @@
         }
       }
 
-      // Military page data (soldiers, offSpecs, defSpecs, elites, wage rate)
+      // Unit counts from throne page (totals including out-on-attack troops)
       fill('soldiers', d.soldiers);
       fill('offSpecs', d.offSpecs);
       fill('defSpecs', d.defSpecs);

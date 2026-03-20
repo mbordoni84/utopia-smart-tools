@@ -8,22 +8,26 @@ The extension works on Chrome, Comet, Brave, and other Chromium browsers.
 PART 1: INSTALL THE EXTENSION
 ------------------------------
 
-1. You will receive a folder called "extension". Save it somewhere on your computer
-   (for example, your Desktop or Documents folder). Do NOT rename or move it later.
+1. Download the extension from GitHub:
+   https://github.com/mbordoni84/utopia-smart-tools/archive/refs/heads/main.zip
 
-2. Open your browser and type this in the address bar:
+2. Unzip the downloaded file. Inside you will find a folder called "extension".
+   Save it somewhere on your computer (for example, your Desktop or Documents).
+   Do NOT rename or move it later.
+
+3. Open your browser and type this in the address bar:
    chrome://extensions
 
-3. In the top-right corner, turn ON "Developer mode" (it's a toggle switch).
+4. In the top-right corner, turn ON "Developer mode" (it's a toggle switch).
 
-4. Click the "Load unpacked" button that appears in the top-left.
+5. Click the "Load unpacked" button that appears in the top-left.
 
-5. Select the "extension" folder you saved in step 1. Click "Select Folder".
+6. Select the "extension" folder you saved in step 2. Click "Select Folder".
 
-6. You should now see "Utopia Smart Tools" in your extensions list.
+7. You should now see "Utopia Smart Tools" in your extensions list.
    If it shows any errors, let me know.
 
-7. (Optional) Click the puzzle piece icon in the browser toolbar and pin
+8. (Optional) Click the puzzle piece icon in the browser toolbar and pin
    "Utopia Smart Tools" for easy access.
 
 
