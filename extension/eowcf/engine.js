@@ -846,16 +846,21 @@ const Engine = {
   // ---------------------------------------------------------------------------
   // Wiki: Military/Draft section
   //
-  // Drafted soldiers = FLOOR(peasants * draftRate)
+  // Drafted soldiers = FLOOR(peasants * draftRate * heroismMod * 1.3 * patriotismMod)
   // Draft rate options: none(0%), normal(0.5%), aggressive(1.5%), emergency(2%), war(2.5%)
+  // heroismMod = 1 + sciHeroism/100
+  // patriotismMod = 1.3 if spellPatriotism active, else 1.0
+  // 1.3x: empirical constant confirmed against live game data (hidden mechanic)
   //
   // Draft cost per soldier:
   //   baseWage = MAX(wageRate * 0.5, 7.5)
   //   levelFactor = MAX(1.0154 * (mil/maxPop)^2 + 1.1759 * (mil/maxPop) + 0.3633, 1)
-  //   costPerSoldier = baseWage * levelFactor
+  //   armMod = 1 - MIN(armouriesPctEffect(base=2, max=50%) / 100, 0.5)
+  //   costPerSoldier = baseWage * levelFactor * raceDraftCost * persDraftCost * armMod * greedMod
   //
-  // Note: Wiki formula produces fewer soldiers than observed in-game.
-  //       A draftMultiplier (default 1.0) is exposed for tuning.
+  // State fields required: draftRate, peasants, sciHeroism, spellPatriotism,
+  //   soldiers, offSpecs, defSpecs, elites, thieves, maxPop, wageRate,
+  //   acres, buildings.armouries, race, personality, spellGreed
   // ---------------------------------------------------------------------------
   calcDraft(state) {
     const draftRates = { none: 0, normal: 0.005, aggressive: 0.015, emergency: 0.02, war: 0.025 };
@@ -865,9 +870,12 @@ const Engine = {
     // Heroism science increases draft speed (wiki: "Draft Speed & Draft Costs")
     const heroismMod = 1 + (state.sciHeroism || 0) / 100;
 
+    // Patriotism spell: +30% draft speed
+    const patriotismMod = state.spellPatriotism ? 1.3 : 1;
+
     // 1.3x empirical constant: confirmed against 24 ticks of live game data.
     // Not documented in wiki — likely a hidden game mechanic.
-    const drafted = Math.floor(state.peasants * rate * heroismMod * 1.3);
+    const drafted = Math.floor(state.peasants * rate * heroismMod * 1.3 * patriotismMod);
 
     const maxPop = state.maxPop || 1;
     const totalMilitary = (state.soldiers || 0) + (state.offSpecs || 0) + (state.defSpecs || 0)
@@ -875,10 +883,25 @@ const Engine = {
     const milRatio = totalMilitary / maxPop;
     const levelFactor = Math.max(1.0154 * milRatio * milRatio + 1.1759 * milRatio + 0.3633, 1);
     const baseWage = Math.max((state.wageRate || 100) * 0.5, 7.5);
-    const costPerSoldier = baseWage * levelFactor;
+
+    // Armouries reduce draft cost (pct-based building effect, base 2, max 50%)
+    const beResult = this.calcBE(state);
+    const armouriesBonus = this.calcPctBuildingEffect(
+      2, (state.buildings && state.buildings.armouries) || 0, state.acres || 1, beResult.be
+    );
+    const armMod = 1 - Math.min(armouriesBonus / 100, 0.5);
+
+    // Race and personality draft cost modifiers
+    const raceDraftMod = (state.race && state.race.mods && state.race.mods.draftCost) || 1;
+    const persDraftMod = (state.personality && state.personality.mods && state.personality.mods.draftCost) || 1;
+
+    // Greed spell: +25% draft costs (wiki: same modifier as wages)
+    const greedMod = state.spellGreed ? 1.25 : 1;
+
+    const costPerSoldier = baseWage * levelFactor * raceDraftMod * persDraftMod * armMod * greedMod;
     const draftCost = Math.round(drafted * costPerSoldier);
 
-    return { drafted, draftCost, costPerSoldier, levelFactor, milRatio, rate };
+    return { drafted, draftCost, costPerSoldier, levelFactor, milRatio, rate, armMod, raceDraftMod, persDraftMod };
   },
 
   // ---------------------------------------------------------------------------

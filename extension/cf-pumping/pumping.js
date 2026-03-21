@@ -565,90 +565,86 @@
   // ── Draft calculation ────────────────────────────────────────────────────
 
   /**
-   * Returns { soldiersNeeded, draftedPerTick, draftTicks, totalDraftCost }.
-   *
-   * Uses same formulas as Engine.calcDraft but simplified for planning:
-   * - assumes peasant count stays roughly constant during draft phase
-   * - uses current peasants as base (conservative estimate)
+   * Builds a minimal engine state for Engine.calcDraft / Engine.calcPopGrowth,
+   * overriding soldiers count and armouries count for midpoint/post-build scenarios.
    */
-  function calcDraftPlan(s) {
-    // Use full imported buildings if available, otherwise approximate
-    const bldForPop = _importedBuildings || (() => {
-      const total = s.armouries + s.trainingGrounds + s.mills;
-      return {
-        barrenLand: Math.max(0, s.acres - total),
-        homes: 0, farms: 0, mills: s.mills, banks: 0,
-        trainingGrounds: s.trainingGrounds, armouries: s.armouries,
-        barracks: 0, forts: 0, castles: 0, hospitals: 0,
-        guilds: 0, towers: 0, thievesDens: 0, watchTowers: 0,
-        universities: 0, libraries: 0, stables: 0, dungeons: 0
-      };
-    })();
-
-    const pop = Engine.calcPopGrowth({
+  function toDraftEngineState(s, soldierOverride, armouriesOverride) {
+    const bld = Object.assign(
+      {},
+      _importedBuildings || s.currentBuildings,
+      { armouries: armouriesOverride !== undefined ? armouriesOverride : Math.max(s.armouries, s.targetArmCount) }
+    );
+    return {
       race: s.race,
       personality: s.personality,
       acres: s.acres,
       peasants: s.peasants,
-      soldiers: s.soldiers,
+      soldiers: soldierOverride !== undefined ? soldierOverride : s.soldiers,
       offSpecs: s.offSpecs,
       defSpecs: s.defSpecs,
       elites: s.elites,
       thieves: s.thieves,
       wizards: 0,
       prisoners: 0,
-      buildings: bldForPop,
+      buildings: bld,
       inConstruction: _importedInConstruction,
       inTraining: {},
+      sciHeroism: s.sciHeroism,
+      sciTools: 0,
       sciHousing: 0,
-      honor: { pop: 1, ome: 1, income: 1, food: 1, runes: 1, wpa: 1, tpa: 1 },
+      sciBookkeeping: 0,
+      spellPatriotism: s.spellPAT,
+      spellGreed: false,
       spellGhostWorkers: false,
       spellBlizzard: false,
       spellConstructionDelays: false,
       spellChastity: false,
       spellFertileLands: false,
       spellLoveAndPeace: false,
-      sciTools: 0,
+      honor: { pop: 1, ome: 1, income: 1, food: 1, runes: 1, wpa: 1, tpa: 1 },
       ritual: s.ritual,
       ritualEffectiveness: s.ritualEff,
       dragon: 'none',
+      wageRate: s.savingsWageRate,
+      draftRate: s.draftRate,
       eowcfActive: true,
       eowcfTicksElapsed: 0,
-    });
+    };
+  }
 
+  /**
+   * Returns { soldiersNeeded, draftedPerTick, draftTicks, totalDraftCost, maxPop, targetMilPop, costPerSoldier }.
+   * Delegates to Engine.calcDraft for full formula consistency (Patriotism, armouries, race/pers mods).
+   * Cost is approximated using midpoint military ratio.
+   */
+  function calcDraftPlan(s) {
+    const engState = toDraftEngineState(s);
+
+    const pop = Engine.calcPopGrowth(engState);
     const maxPop = pop.maxPop;
+    engState.maxPop = maxPop;
+
     const currentMilitary = s.soldiers + s.offSpecs + s.defSpecs + s.elites + s.thieves;
     const targetMilPop = Math.floor(maxPop * s.milTargetPct);
     const soldiersNeeded = Math.max(0, targetMilPop - currentMilitary);
 
     if (soldiersNeeded === 0 || DRAFT_RATES[s.draftRate] === 0) {
-      return { soldiersNeeded: 0, draftedPerTick: 0, draftTicks: 0, totalDraftCost: 0, maxPop, targetMilPop };
+      return { soldiersNeeded: 0, draftedPerTick: 0, draftTicks: 0, totalDraftCost: 0, maxPop, targetMilPop, engState };
     }
 
-    const rate = DRAFT_RATES[s.draftRate];
-    const heroismMod = 1 + s.sciHeroism / 100;
-    const patriotismMod = s.spellPAT ? 1.3 : 1;
-    const draftedPerTick = Math.floor(s.peasants * rate * heroismMod * 1.3 * patriotismMod);
-
+    // Draft speed: use Engine.calcDraft at current military
+    const draftResult = Engine.calcDraft(engState);
+    const draftedPerTick = draftResult.drafted;
     const draftTicks = draftedPerTick > 0 ? Math.ceil(soldiersNeeded / draftedPerTick) : 999;
 
-    // Draft cost: average over the drafting period using midpoint mil ratio
-    const midMilitary = currentMilitary + soldiersNeeded / 2;
-    const milRatio = midMilitary / maxPop;
-    const levelFactor = Math.max(1.0154 * milRatio * milRatio + 1.1759 * milRatio + 0.3633, 1);
-    const baseWage = Math.max(s.wageRate * 0.5, 7.5);
-
-    // Armouries reduce draft cost (pct-based, base 2, max 50%)
-    const armDraftReduction = pctBuildingEffect(2, s.armouries, s.acres, 1);
-    const armDraftMod = 1 - Math.min(armDraftReduction / 100, 0.5);
-
-    const raceDraftMod = s.race.mods.draftCost || 1;
-    const persDraftMod = s.personality.mods.draftCost || 1;
-
-    const costPerSoldier = baseWage * levelFactor * raceDraftMod * persDraftMod * armDraftMod;
+    // Cost approximation: midpoint military ratio
+    const midSoldiers = s.soldiers + Math.floor(soldiersNeeded / 2);
+    const midState = Object.assign({}, engState, { soldiers: midSoldiers });
+    const midResult = Engine.calcDraft(midState);
+    const costPerSoldier = midResult.costPerSoldier;
     const totalDraftCost = Math.round(soldiersNeeded * costPerSoldier);
 
-    return { soldiersNeeded, draftedPerTick, draftTicks, totalDraftCost, maxPop, targetMilPop, costPerSoldier };
+    return { soldiersNeeded, draftedPerTick, draftTicks, totalDraftCost, maxPop, targetMilPop, costPerSoldier, engState };
   }
 
   // Toggle final building section visibility
@@ -1620,6 +1616,7 @@
       sciArtisan: s.sciArtisan,
       spellMinersM: false, spellGhostWorkers: false, spellBlizzard: false,
       spellConstructionDelays: false, spellRiots: false, spellGreed: false,
+      spellPatriotism: s.spellPAT,
       spellInspireArmy: s.spellIA, spellHerosInspiration: s.spellHI,
       spellChastity: false, spellFertileLands: false, spellLoveAndPeace: false,
       spellDrought: false, spellGluttony: false,
@@ -1675,20 +1672,23 @@
 
       gold += incomeThisTick - wagesThisTick;
 
-      // ── Draft this tick ──
+      // ── Draft this tick via Engine.calcDraft ──
       if (phase === 'draft' && soldiersLeft > 0) {
-        const drafted = Math.min(draftPlan.draftedPerTick, soldiersLeft, peasants);
+        // Build tick-accurate engine state: armouries already built, current peasants/military
+        const draftTickState = Object.assign({}, draftPlan.engState, {
+          peasants,
+          soldiers,
+          maxPop: draftPlan.maxPop,
+          wageRate: s.savingsWageRate,
+        });
+        const draftResult = Engine.calcDraft(draftTickState);
+        const drafted = Math.min(draftResult.drafted, soldiersLeft, peasants);
         if (drafted > 0) {
-          const milRatio  = totalMilitary / Math.max(draftPlan.maxPop, 1);
-          const lvlFactor = Math.max(1.0154 * milRatio * milRatio + 1.1759 * milRatio + 0.3633, 1);
-          const baseWage  = Math.max(s.wageRate * 0.5, 7.5);
-          // Use targetArmCount: construction completed before draft phase starts
-          const effectiveArmouries = Math.max(s.armouries, s.targetArmCount);
-          const armRed    = pctBuildingEffect(2, effectiveArmouries, s.acres, 1);
-          const armMod    = 1 - Math.min(armRed / 100, 0.5);
-          const draftCostTick = drafted * baseWage * lvlFactor
-            * (s.race.mods.draftCost || 1) * (s.personality.mods.draftCost || 1) * armMod;
-          gold          -= draftCostTick;
+          // Scale cost to actual drafted count (Engine computed at full draftedPerTick)
+          const costThisTick = draftResult.drafted > 0
+            ? (drafted / draftResult.drafted) * draftResult.draftCost
+            : drafted * draftResult.costPerSoldier;
+          gold          -= costThisTick;
           peasants      -= drafted;
           soldiers      += drafted;
           totalMilitary += drafted;

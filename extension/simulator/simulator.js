@@ -94,6 +94,7 @@
         spellBlizzard: !!(d.activeSpells && d.activeSpells.BLIZZARD),
         spellRiots: !!(d.activeSpells && d.activeSpells.RIOTS),
         spellConstructionDelays: !!(d.activeSpells && d.activeSpells.CONSTRUCTION_DELAYS),
+        spellPatriotism: !!(d.activeSpells && d.activeSpells.PATRIOTISM),
 
         ritual: d.ritual || 'none',
         ritualEffectiveness: (d.ritualEffectiveness || 100) / 100,
@@ -306,7 +307,7 @@
       spellChastity: false, spellFertileLands: false, spellMinersM: false,
       spellBuildBoon: false, spellLoveAndPeace: false, spellInspireArmy: false,
       spellHerosInspiration: false, spellGhostWorkers: false, spellDrought: false,
-      spellGluttony: false, spellGreed: false, spellBlizzard: false,
+      spellGluttony: false, spellGreed: false, spellBlizzard: false, spellPatriotism: false,
       spellRiots: false, spellConstructionDelays: false,
       ritual: 'none', ritualEffectiveness: 1, dragon: 'none', wageRate: 100
     };
