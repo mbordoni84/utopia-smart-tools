@@ -6,8 +6,7 @@
 // higher wages; higher mil ratio → more expensive drafts; population grows
 // partially offsetting draft losses.
 //
-// Requires: GAME_DATA (data/game_data.js), Engine (eowcf/engine.js),
-//           Scrapers (scraper/scrapers.js)
+// Requires: GAME_DATA, Engine, Utils, StateBuilder, Simulator (core/)
 // =============================================================================
 
 (function () {
@@ -28,82 +27,11 @@
         return;
       }
 
-      // Build engine state from scraped data (mirrors eowcf/ui.js importGameData logic)
-      const raceKey = d.race || 'human';
-      const persKey = d.personality || 'generalIn';
-      const race = GAME_DATA.races[raceKey] || GAME_DATA.races.human;
-      const personality = GAME_DATA.personalities[persKey] || GAME_DATA.personalities.generalIn;
-
-      const buildings = {};
-      for (const key of Object.keys(GAME_DATA.buildings)) {
-        buildings[key] = (d.buildings && d.buildings[key]) || 0;
-      }
-
-      const honorTitle = d.honorTitle || 'Peasant';
-      const honorIdx = GAME_DATA.honorTitles.findIndex(t => t.name === honorTitle);
-      const honor = Engine.getHonorMods(honorIdx >= 0 ? honorIdx : 0, race, personality);
-
-      // Reconstruct sciences object
-      const sciences = d.sciences || {};
-
-      const state = {
-        race,
-        personality,
-        acres: d.acres || 0,
-        eowcfActive: false,
-        eowcfTicksElapsed: 0,
-
-        gold: d.gold || 0,
-        food: d.food || 0,
-        runes: d.runes || 0,
-
-        peasants: d.peasants || 0,
-        soldiers: d.soldiers || 0,
-        offSpecs: d.offSpecs || 0,
-        defSpecs: d.defSpecs || 0,
-        elites: d.elites || 0,
-        thieves: d.thieves || 0,
-        wizards: d.wizards || 0,
-        prisoners: d.prisoners || 0,
-
-        buildings,
-        inConstruction: d.inConstruction || {},
-        inTraining: d.inTraining || {},
-
-        sciAlchemy: Math.abs(sciences.alchemy || 0),
-        sciTools: Math.abs(sciences.tools || 0),
-        sciProduction: Math.abs(sciences.production || 0),
-        sciHousing: Math.abs(sciences.housing || 0),
-        sciBookkeeping: Math.abs(sciences.bookkeeping || 0),
-        sciHeroism: Math.abs(sciences.heroism || 0),
-        sciValor: Math.abs(sciences.valor || 0),
-        sciArtisan: Math.abs(sciences.artisan || 0),
-
-        // Spells from active spells list
-        spellChastity: !!(d.activeSpells && d.activeSpells.CHASTITY),
-        spellFertileLands: !!(d.activeSpells && d.activeSpells.FERTILE_LANDS),
-        spellMinersM: !!(d.activeSpells && d.activeSpells.MINERS_MYSTIQUE),
-        spellBuildBoon: !!(d.activeSpells && d.activeSpells.BUILDERS_BOON),
-        spellLoveAndPeace: !!(d.activeSpells && d.activeSpells.LOVE_AND_PEACE),
-        spellInspireArmy: !!(d.activeSpells && d.activeSpells.INSPIRE_ARMY),
-        spellHerosInspiration: !!(d.activeSpells && d.activeSpells.HEROS_INSPIRATION),
-        spellGhostWorkers: !!(d.activeSpells && d.activeSpells.GHOST_WORKERS),
-        spellDrought: !!(d.activeSpells && d.activeSpells.DROUGHT),
-        spellGluttony: !!(d.activeSpells && d.activeSpells.GLUTTONY),
-        spellGreed: !!(d.activeSpells && d.activeSpells.GREED),
-        spellBlizzard: !!(d.activeSpells && d.activeSpells.BLIZZARD),
-        spellRiots: !!(d.activeSpells && d.activeSpells.RIOTS),
-        spellConstructionDelays: !!(d.activeSpells && d.activeSpells.CONSTRUCTION_DELAYS),
-        spellPatriotism: !!(d.activeSpells && d.activeSpells.PATRIOTISM),
-
-        ritual: d.ritual || 'none',
-        ritualEffectiveness: (d.ritualEffectiveness || 100) / 100,
-        dragon: d.dragon || 'none',
-        wageRate: d.wageRate || 100,
-        honor
-      };
-
+      const state = StateBuilder.fromScrapedData(d);
       _engineState = state;
+
+      const race = state.race;
+      const personality = state.personality;
 
       // Fill manual override inputs with imported values
       const fill = (id, val) => {
@@ -150,7 +78,7 @@
     const wages = Engine.calcWages(state);
 
     const grid = document.getElementById('initialState');
-    const fmtNum = n => Math.round(n).toLocaleString();
+    const fmtNum = Utils.fmtNum;
     const rows = [
       ['Peasants', fmtNum(state.peasants)],
       ['Soldiers', fmtNum(state.soldiers)],
@@ -177,73 +105,22 @@
   document.getElementById('runBtn').addEventListener('click', runSimulation);
 
   function runSimulation() {
-    // Build starting state — merge engine state with manual override inputs
     const startState = buildStartState();
     if (!startState) return;
 
     const draftRate = document.getElementById('draftRate').value;
     const milTargetPct = (parseFloat(document.getElementById('milTarget').value) || 85) / 100;
-    const MAX_TICKS = 300; // safety cap
 
-    const results = [];
-    const state = deepClone(startState);
-    state.draftRate = draftRate;
-    state.eowcfTicksElapsed = 0;
+    const results = Simulator.run(startState, {
+      maxTicks: 300,
+      draftRate,
+      shouldStop(snapshot) {
+        if (snapshot.milPct >= milTargetPct) return true;
+        if (draftRate === 'none') return true;
+        return false;
+      }
+    });
 
-    // Calculate initial military count (soldiers + specs + elites + thieves)
-    const initialMilitary = (state.soldiers || 0) + (state.offSpecs || 0)
-      + (state.defSpecs || 0) + (state.elites || 0) + (state.thieves || 0);
-
-    for (let tick = 1; tick <= MAX_TICKS; tick++) {
-      const pop = Engine.calcPopGrowth(state);
-      state.maxPop = pop.maxPop;
-
-      const income = Engine.calcIncome(state);
-      const wages = Engine.calcWages(state);
-      const food = Engine.calcFood(state);
-      const runes = Engine.calcRunes(state);
-      const draft = Engine.calcDraft(state);
-
-      const netGold = income.modifiedIncome - wages.modifiedWages - draft.draftCost;
-      // Total military = current soldiers (which grows by draft each tick) + fixed specs/elites/thieves
-      const totalMilitary = state.soldiers + (state.offSpecs || 0)
-        + (state.defSpecs || 0) + (state.elites || 0) + (state.thieves || 0);
-      const milPct = state.maxPop > 0 ? totalMilitary / state.maxPop : 0;
-
-      results.push({
-        tick,
-        milPct,
-        gold: Math.round(state.gold + netGold),
-        netGold: Math.round(netGold),
-        peasants: Math.round(state.peasants),
-        soldiers: Math.round(state.soldiers),
-        drafted: draft.drafted,
-        draftCost: Math.round(draft.draftCost),
-        income: Math.round(income.modifiedIncome),
-        wages: Math.round(wages.modifiedWages),
-        be: income.beResult.be,
-        food: Math.round(Math.max(0, state.food + food.netFood)),
-        netFood: Math.round(food.netFood),
-        runes: Math.round(Math.max(0, state.runes + runes.netRunes)),
-        netRunes: Math.round(runes.netRunes),
-      });
-
-      // Advance state
-      state.gold += netGold;
-      state.peasants = Math.max(0, state.peasants + pop.netPeasantChange - draft.drafted);
-      state.soldiers += draft.drafted;
-      state.food = Math.max(0, state.food + food.netFood);
-      state.runes = Math.max(0, state.runes + runes.netRunes);
-      if (state.eowcfActive) state.eowcfTicksElapsed++;
-
-      // Stop when target military % is reached
-      if (milPct >= milTargetPct) break;
-
-      // Also stop if no drafting (would never converge)
-      if (draftRate === 'none') break;
-    }
-
-    // Summary message
     const lastResult = results[results.length - 1];
     const reached = lastResult.milPct >= milTargetPct;
     const summaryEl = document.getElementById('simSummary');
@@ -265,8 +142,7 @@
   }
 
   function buildStartState() {
-    // Start from imported state (if any) and apply manual overrides
-    let state = _engineState ? deepClone(_engineState) : buildDefaultState();
+    let state = _engineState ? Utils.deepClone(_engineState) : StateBuilder.fromScrapedData({});
 
     const getNum = (id) => {
       const el = document.getElementById(id);
@@ -286,36 +162,6 @@
     return state;
   }
 
-  function buildDefaultState() {
-    // Minimal state when no game data is imported
-    const race = GAME_DATA.races.human;
-    const personality = GAME_DATA.personalities.generalIn;
-    const honor = Engine.getHonorMods(0, race, personality);
-    const buildings = {};
-    for (const key of Object.keys(GAME_DATA.buildings)) buildings[key] = 0;
-
-    return {
-      race, personality, honor,
-      acres: 2000,
-      eowcfActive: false, eowcfTicksElapsed: 0,
-      gold: 0, food: 0, runes: 0,
-      peasants: 0, soldiers: 0, offSpecs: 0, defSpecs: 0,
-      elites: 0, thieves: 0, wizards: 0, prisoners: 0,
-      buildings, inConstruction: {}, inTraining: {},
-      sciAlchemy: 0, sciTools: 0, sciProduction: 0, sciHousing: 0,
-      sciBookkeeping: 0, sciHeroism: 0, sciValor: 0, sciArtisan: 0,
-      spellChastity: false, spellFertileLands: false, spellMinersM: false,
-      spellBuildBoon: false, spellLoveAndPeace: false, spellInspireArmy: false,
-      spellHerosInspiration: false, spellGhostWorkers: false, spellDrought: false,
-      spellGluttony: false, spellGreed: false, spellBlizzard: false, spellPatriotism: false,
-      spellRiots: false, spellConstructionDelays: false,
-      ritual: 'none', ritualEffectiveness: 1, dragon: 'none', wageRate: 100
-    };
-  }
-
-  function deepClone(obj) {
-    return JSON.parse(JSON.stringify(obj));
-  }
 
   // ---------------------------------------------------------------------------
   // RENDER RESULTS
@@ -333,7 +179,7 @@
   // TABLE
   // ---------------------------------------------------------------------------
   function renderTable(results) {
-    const fmtNum = n => Math.round(n).toLocaleString();
+    const fmtNum = Utils.fmtNum;
     const fmtPct = n => (n * 100).toFixed(1) + '%';
 
     const tbody = document.getElementById('simTableBody');
@@ -443,7 +289,7 @@
   }
 
   function positionTooltip(mouseEvent, row, series) {
-    const fmtNum = n => Math.round(n).toLocaleString();
+    const fmtNum = Utils.fmtNum;
     const fmtPct = n => (n * 100).toFixed(1) + '%';
     let html = `<div style="color:#c4a35a;font-weight:600;margin-bottom:6px">Tick ${row.tick}</div>`;
     for (const s of series) {
@@ -724,13 +570,7 @@
     ctx.fillStyle = '#aaa'; ctx.fillText('BE%', lx + 20, pad.top + chartH + 30);
   }
 
-  function fmtK(n) {
-    const abs = Math.abs(n);
-    const sign = n < 0 ? '-' : '';
-    if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + 'M';
-    if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + 'K';
-    return sign + Math.round(abs).toString();
-  }
+  const fmtK = Utils.fmtK;
 
   // ---------------------------------------------------------------------------
   // AUTO-IMPORT ON LOAD

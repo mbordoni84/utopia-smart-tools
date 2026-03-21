@@ -39,15 +39,6 @@
     persSelect.appendChild(opt);
   }
 
-  // Honor Title dropdown — from GAME_DATA.honorTitles
-  const honorSelect = document.getElementById('honorTitle');
-  GAME_DATA.honorTitles.forEach((title, idx) => {
-    const opt = document.createElement('option');
-    opt.value = String(idx);
-    opt.textContent = `${title.name} (${title.minHonor}+)`;
-    honorSelect.appendChild(opt);
-  });
-
   // Dragon dropdown — from GAME_DATA.dragons
   const dragonSelect = document.getElementById('dragon');
   for (const [key, dragon] of Object.entries(GAME_DATA.dragons)) {
@@ -275,18 +266,10 @@
   toggleEowcfFields();
 
   // ---------------------------------------------------------------------------
-  // FORMATTING HELPERS
+  // FORMATTING HELPERS (aliases into Utils)
   // ---------------------------------------------------------------------------
-
-  /** Format number with locale-aware thousands separators, rounded to integer */
-  function fmt(n) {
-    return Math.round(n).toLocaleString();
-  }
-
-  /** Format as percentage with 1 decimal place (e.g. "85.3%") */
-  function fmtPct(n) {
-    return n.toFixed(1) + '%';
-  }
+  const fmt = Utils.fmtNum;
+  const fmtPct = Utils.fmtPct;
 
   // ---------------------------------------------------------------------------
   // HONOR SUMMARY
@@ -485,13 +468,90 @@
   }
 
   // ---------------------------------------------------------------------------
+  // GATHER STATE FROM DOM
+  // ---------------------------------------------------------------------------
+  function calcEowcfTicksElapsed() {
+    const startStr = document.getElementById('eowcfStartDate')?.value?.trim();
+    const currentStr = window._utopianDate;
+    if (!startStr || !currentStr) return Infinity;
+    const normalized = startStr.replace(/\s+of\s+/i, ', ');
+    const start = Scrapers.parseUtopianDate(normalized);
+    const current = Scrapers.parseUtopianDate(currentStr);
+    if (!start || !current) return Infinity;
+    return Math.max(0, Scrapers.utopianDateToTicks(current) - Scrapers.utopianDateToTicks(start));
+  }
+
+  function gatherState() {
+    const raceKey = document.getElementById('race').value;
+    const persKey = document.getElementById('personality').value;
+    const race = GAME_DATA.races[raceKey];
+    const personality = GAME_DATA.personalities[persKey];
+
+    const buildings = {};
+    for (const key of Object.keys(GAME_DATA.buildings)) {
+      const el = document.getElementById('bld_' + key);
+      buildings[key] = el ? (parseInt(el.value) || 0) : 0;
+    }
+
+    const honorVal = parseInt(document.getElementById('honor').value) || 0;
+
+    const state = {
+      race, personality,
+      acres: parseInt(document.getElementById('acres').value) || 0,
+      eowcfActive: document.getElementById('eowcfActive').checked,
+      eowcfDuration: parseInt(document.getElementById('eowcfDuration')?.value) || 48,
+      eowcfTicksElapsed: calcEowcfTicksElapsed(),
+      gold: parseInt(document.getElementById('gold').value) || 0,
+      food: parseInt(document.getElementById('food').value) || 0,
+      runes: parseInt(document.getElementById('runes').value) || 0,
+      peasants: parseInt(document.getElementById('peasants').value) || 0,
+      soldiers: parseInt(document.getElementById('soldiers').value) || 0,
+      offSpecs: parseInt(document.getElementById('offSpecs').value) || 0,
+      defSpecs: parseInt(document.getElementById('defSpecs').value) || 0,
+      elites: parseInt(document.getElementById('elites').value) || 0,
+      thieves: parseInt(document.getElementById('thieves').value) || 0,
+      wizards: parseInt(document.getElementById('wizards').value) || 0,
+      prisoners: parseInt(document.getElementById('prisoners').value) || 0,
+      buildings,
+      sciAlchemy: Math.abs(parseFloat(document.getElementById('sciAlchemy').value) || 0),
+      sciTools: Math.abs(parseFloat(document.getElementById('sciTools').value) || 0),
+      sciProduction: Math.abs(parseFloat(document.getElementById('sciProduction').value) || 0),
+      sciHousing: Math.abs(parseFloat(document.getElementById('sciHousing').value) || 0),
+      sciBookkeeping: Math.abs(parseFloat(document.getElementById('sciBookkeeping').value) || 0),
+      sciHeroism: Math.abs(parseFloat(document.getElementById('sciHeroism').value) || 0),
+      sciValor: Math.abs(parseFloat(document.getElementById('sciValor').value) || 0),
+      sciArtisan: Math.abs(parseFloat(document.getElementById('sciArtisan').value) || 0),
+      spellChastity: !!document.getElementById('spell_CHASTITY')?.checked,
+      spellFertileLands: !!document.getElementById('spell_FERTILE_LANDS')?.checked,
+      spellMinersM: !!document.getElementById('spell_MINERS_MYSTIQUE')?.checked,
+      spellBuildBoon: !!document.getElementById('spell_BUILDERS_BOON')?.checked,
+      spellLoveAndPeace: !!document.getElementById('spell_LOVE_AND_PEACE')?.checked,
+      spellInspireArmy: !!document.getElementById('spell_INSPIRE_ARMY')?.checked,
+      spellHerosInspiration: !!document.getElementById('spell_HEROS_INSPIRATION')?.checked,
+      spellGhostWorkers: !!document.getElementById('spell_GHOST_WORKERS')?.checked,
+      spellDrought: !!document.getElementById('spell_DROUGHT')?.checked,
+      spellGluttony: !!document.getElementById('spell_GLUTTONY')?.checked,
+      spellGreed: !!document.getElementById('spell_GREED')?.checked,
+      spellBlizzard: !!document.getElementById('spell_BLIZZARD')?.checked,
+      spellRiots: !!document.getElementById('spell_RIOTS')?.checked,
+      spellConstructionDelays: !!document.getElementById('spell_CONSTRUCTION_DELAYS')?.checked,
+      ritual: document.getElementById('ritual').value,
+      ritualEffectiveness: (parseFloat(document.getElementById('ritualEffectiveness')?.value) || 100) / 100,
+      dragon: document.getElementById('dragon')?.value || 'none',
+      wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100,
+      inTraining: window._inTraining || {},
+      inConstruction: window._inConstruction || {},
+    };
+
+    state.honor = Engine.getHonorMods(honorVal, state.race, state.personality);
+    return state;
+  }
+
+  // ---------------------------------------------------------------------------
   // MAIN RECALCULATE FUNCTION
   // ---------------------------------------------------------------------------
-  // Called on every input change. Gathers state, runs engine calculations,
-  // and renders all result cards.
-  // ---------------------------------------------------------------------------
   function recalculate() {
-    const state = Engine.gatherState();
+    const state = gatherState();
     if (!state.race || !state.personality) return;
     renderHonorSummary(state.honor);
     renderModSummary('raceSummary', state.race);
@@ -816,12 +876,9 @@
       fill('thieves', d.thieves);
       fill('wizards', d.wizards);
 
-      // Honor title — match by name to dropdown index
-      if (d.honorTitle) {
-        const idx = GAME_DATA.honorTitles.findIndex(t => t.name === d.honorTitle);
-        if (idx >= 0) {
-          document.getElementById('honorTitle').value = String(idx);
-        }
+      // Honor value (numeric)
+      if (d.honor != null) {
+        fill('honor', d.honor);
       }
 
       // Unit counts from throne page (totals including out-on-attack troops)

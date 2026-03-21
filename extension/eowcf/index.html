@@ -181,8 +181,8 @@
       <h3>Honor &amp; Wages</h3>
       <div class="form-grid">
         <div class="form-group">
-          <label for="honorTitle">Honor Title</label>
-          <select id="honorTitle"></select>
+          <label for="honor">Honor</label>
+          <input type="number" id="honor" value="0" min="0">
         </div>
         <div class="form-group">
           <label for="wageRate">Wage Rate (%)</label>
@@ -219,7 +219,9 @@
   <script src="../data/game_data.js"></script>
   <script src="../data/spells.js"></script>
   <script src="../scraper/scrapers.js"></script>
-  <script src="engine.js"></script>
+  <script src="../core/utils.js"></script>
+  <script src="../core/engine.js"></script>
+  <script src="../core/state.js"></script>
   <script src="ui.js"></script>
 </body>
 </html>

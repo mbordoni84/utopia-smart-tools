@@ -251,20 +251,6 @@ const Scrapers = {
       if (mapVal) data.multiAttackProtection = mapVal.trim();
     }
 
-    // --- Honor title from greeting ---
-    // Text like: "Knight Ulysses, I track some important..."
-    const greetingP = doc.querySelector('.game-content p');
-    if (greetingP) {
-      const text = greetingP.textContent.trim();
-      const titles = ['Prince', 'Duke', 'Marquis', 'Count', 'Viscount', 'Baron', 'Lord', 'Knight', 'Peasant'];
-      for (const title of titles) {
-        if (text.startsWith(title + ' ')) {
-          data.honorTitle = title;
-          break;
-        }
-      }
-    }
-
     // --- Historical table (Net Change Yesterday / This Month / Last Month) ---
     // Rows: Our Income, Military Wages, Draft Costs, Net Change (gold),
     //        Peasants, Food Grown, Food Needed, Food Decayed, Net Change (food),
@@ -481,30 +467,66 @@ const Scrapers = {
 
     const data = { _page: 'military', _scrapedAt: Date.now() };
 
-    // Find the army table — has rows with Soldiers, race-specific unit names
+    // Find tables for OME/DME and Army Availability
     const tables = doc.querySelectorAll('table');
     for (const table of tables) {
+      // Check for OME/DME table
       const pairs = this.extractThTdPairs(table);
-
-      // Check for OME/DME
       if (pairs.has('offensive military effectiveness')) {
         data.ome = this.parsePct(pairs.get('offensive military effectiveness'));
         data.dme = this.parsePct(pairs.get('defensive military effectiveness'));
         continue;
       }
 
-      // Check for army units — these are "You Own" (at-home) counts.
-      // Do NOT overwrite the main unit keys (soldiers, offSpecs, etc.)
-      // because the throne page provides totals including out-on-attack troops.
-      // Store under atHome_ prefix instead.
-      if (pairs.has('soldiers')) {
-        data.atHome_soldiers = this.parseNum(pairs.get('soldiers'));
-        data.atHome_prisoners = this.parseNum(pairs.get('prisoners'));
-        for (const [label, value] of pairs) {
-          const unitType = this.unitNameMap[label];
-          if (unitType) {
-            data['atHome_' + unitType] = this.parseNum(value);
-          }
+      // Army Availability table: table.data with "Standing Army" header
+      // Columns: Standing Army, then N army slots (deployed or undeployed)
+      // Sum all columns per row to get TRUE totals (including out-on-attack)
+      const thead = table.querySelector('thead');
+      if (!thead || !thead.textContent.includes('Standing Army')) continue;
+
+      const rows = table.querySelectorAll('tbody tr');
+      for (const row of rows) {
+        const th = row.querySelector('th');
+        if (!th) continue;
+        const name = th.textContent.trim().toLowerCase();
+        const tds = row.querySelectorAll('td');
+        if (tds.length === 0) continue;
+
+        // First td = standing army (at home)
+        const standingVal = this.parseNum(tds[0].textContent.trim());
+        // Sum all columns for total (standing + all deployed armies)
+        let total = standingVal || 0;
+        for (let i = 1; i < tds.length; i++) {
+          const val = this.parseNum(tds[i].textContent.trim());
+          if (val > 0) total += val;
+        }
+
+        // Generals
+        if (name === 'generals') {
+          data.atHome_generals = standingVal;
+          data.generals = total;
+          continue;
+        }
+
+        // Soldiers
+        if (name === 'soldiers') {
+          data.atHome_soldiers = standingVal;
+          data.soldiers = total;
+          continue;
+        }
+
+        // Prisoners
+        if (name === 'prisoners') {
+          data.atHome_prisoners = standingVal;
+          data.prisoners = total;
+          continue;
+        }
+
+        // Race-specific unit names → generic types
+        const unitType = this.unitNameMap[name];
+        if (unitType) {
+          data['atHome_' + unitType] = standingVal;
+          data[unitType] = total;
         }
       }
     }

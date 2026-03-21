@@ -4,8 +4,7 @@
 // Retroplans the optimal sequence of actions (build armouries → draft →
 // train specs/elites → raise wages) to peak military strength at CF exit.
 //
-// Requires: GAME_DATA (data/game_data.js), Engine (eowcf/engine.js),
-//           Scrapers (scraper/scrapers.js)
+// Requires: GAME_DATA, Engine, Utils, StateBuilder (core/), Scrapers
 // =============================================================================
 
 (function () {
@@ -127,61 +126,9 @@
 
       // Compute net income/tick from Engine (income - wages)
       try {
-        const honorIdx = GAME_DATA.honorTitles.findIndex(t => t.name === (d.honorTitle || 'Peasant'));
-        const honor = Engine.getHonorMods(honorIdx >= 0 ? honorIdx : 0, GAME_DATA.races[d.race || 'human'], GAME_DATA.personalities[d.personality || 'generalIn']);
-        const bld = d.buildings || {};
-        const sci = d.sciences || {};
-        const as  = d.activeSpells || {};
-        const engineState = {
-          race:        GAME_DATA.races[d.race || 'human'],
-          personality: GAME_DATA.personalities[d.personality || 'generalIn'],
-          acres:       d.acres || 0,
-          peasants:    d.peasants || 0,
-          soldiers:    d.soldiers || 0,
-          offSpecs:    d.offSpecs || 0,
-          defSpecs:    d.defSpecs || 0,
-          elites:      d.elites || 0,
-          thieves:     d.thieves || 0,
-          wizards:     d.wizards || 0,
-          prisoners:   d.prisoners || 0,
-          buildings:   Object.fromEntries(Object.keys(GAME_DATA.buildings).map(k => [k, bld[k] || 0])),
-          inConstruction: d.inConstruction || {},
-          inTraining:     d.inTraining || {},
-          sciAlchemy:    Math.abs(sci.alchemy || 0),
-          sciTools:      Math.abs(sci.tools || 0),
-          sciProduction: Math.abs(sci.production || 0),
-          sciHousing:    Math.abs(sci.housing || 0),
-          sciBookkeeping:Math.abs(sci.bookkeeping || 0),
-          sciHeroism:    Math.abs(sci.heroism || 0),
-          sciValor:      Math.abs(sci.valor || 0),
-          sciArtisan:    Math.abs(sci.artisan || 0),
-          spellBuildBoon:      !!as.BUILDERS_BOON,
-          spellInspireArmy:    !!as.INSPIRE_ARMY,
-          spellHerosInspiration: !!as.HEROS_INSPIRATION,
-          spellMinersM:        !!as.MINERS_MYSTIQUE,
-          spellGhostWorkers:   !!as.GHOST_WORKERS,
-          spellBlizzard:       !!as.BLIZZARD,
-          spellConstructionDelays: !!as.CONSTRUCTION_DELAYS,
-          spellGreed:          !!as.GREED,
-          spellRiots:          !!as.RIOTS,
-          spellChastity:       !!as.CHASTITY,
-          spellFertileLands:   !!as.FERTILE_LANDS,
-          spellLoveAndPeace:   !!as.LOVE_AND_PEACE,
-          spellDrought:        !!as.DROUGHT,
-          spellGluttony:       !!as.GLUTTONY,
-          ritual:              d.ritual || 'none',
-          ritualEffectiveness: (d.ritualEffectiveness || 100) / 100,
-          dragon:              d.dragon || 'none',
-          wageRate:            d.wageRate || 100,
-          eowcfActive:         false,
-          eowcfTicksElapsed:   0,
-          honor,
-        };
+        const engineState = StateBuilder.fromScrapedData(d);
         const incomeResult = Engine.calcIncome(engineState);
-        // Store gross income — wages are recalculated per phase in calcPlan
         fill('income', Math.round(incomeResult.modifiedIncome));
-
-        // Save full engine state for accurate per-tick simulation
         _engineBaseState = engineState;
       } catch (e) {
         // If engine calc fails, leave income for manual entry
@@ -423,143 +370,75 @@
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  /**
-   * Diminishing-returns pct building effect (mirrors Engine.calcPctBuildingEffect).
-   * base * be * x * (100-x) / 100, where x = MIN(50, pctLand).
-   * Returns the bonus as a percentage number (e.g. 24.5 means +24.5%).
-   */
-  function pctBuildingEffect(base, count, acres, be) {
-    if (count <= 0 || acres <= 0) return 0;
-    const x = Math.min(50, (count / acres) * 100);
-    return base * be * x * (100 - x) / 100;
-  }
-
-  /**
-   * Artisan science modifier for build time and cost.
-   * Engine formula: 1 - sciArtisan/100 (capped: game max is 25%).
-   */
-  function artisanMod(sciArtisan) {
-    return 1 - Math.min(sciArtisan / 100, 0.25);
-  }
-
-  /**
-   * Valor science modifier for training time.
-   * Same pattern: 1 - sciValor/100 (max 25% reduction).
-   */
-  function valorMod(sciValor) {
-    return 1 - Math.min(sciValor / 100, 0.25);
-  }
+  // Helpers delegated to Engine
+  const pctBuildingEffect = Engine.calcPctBuildingEffect.bind(Engine);
 
   // ── Construction time (ticks) ─────────────────────────────────────────────
 
   /**
    * Returns the number of ticks a single building takes to construct.
-   *
-   * Modifiers applied:
-   *   Builder's Boon: ×0.75 time
-   *   Double Speed:   ×0.50 time
-   *   Haste ritual:   ×(1 + effect*eff) where effect = -0.25
-   *   Expedient ritual: ×(1 + effect*eff) where effect = -0.25
-   *   Artisan science: 1 - sciArtisan/100 (max 25%)
+   * Delegates to Engine.calcConstructionTime.
    */
   function calcConstructionTicks(s) {
-    const base = 16;
-    const raceMod  = s.race.mods.buildTime || 1;
-    const persMod  = s.personality.mods.buildTime || 1;
-    const bbMod    = s.spellBB ? 0.75 : 1;
-    const dsMod    = s.doubleSpeed ? 0.50 : 1;
-
-    let ritualTimeMod = 1;
-    if (s.ritualData && s.ritualData.effects.constructionTime) {
-      ritualTimeMod = 1 + s.ritualData.effects.constructionTime * s.ritualEff;
-    }
-
-    const artMod = artisanMod(s.sciArtisan);
-    const raw = base * raceMod * persMod * bbMod * dsMod * ritualTimeMod * artMod;
-    return Math.max(1, Math.round(raw));
+    const engineState = {
+      race: s.race, personality: s.personality,
+      acres: s.acres, buildings: s.currentBuildings,
+      spellBuildBoon: s.spellBB, doubleSpeed: s.doubleSpeed,
+      ritual: s.ritual, ritualEffectiveness: s.ritualEff,
+      sciArtisan: s.sciArtisan, dragon: 'none',
+      peasants: s.peasants, prisoners: 0, sciTools: 0,
+      spellGhostWorkers: false, spellBlizzard: false, spellConstructionDelays: false,
+    };
+    return Engine.calcConstructionTime(engineState).constructionTime;
   }
 
   // ── Construction cost (gc per building) ──────────────────────────────────
 
   /**
-   * Returns the gold cost per armoury to build.
-   * Uses the current armouries count for mills reduction (pre-build state).
+   * Returns the gold cost per building to construct.
+   * Delegates to Engine.calcConstructionCost.
    */
   function calcConstructionCostPerBldg(s) {
-    const baseCost = 0.05 * (s.acres + 10000);
-    const raceMod  = s.race.mods.buildCost || 1;
-    const persMod  = s.personality.mods.buildCost || 1;
-
-    // Mills reduce build cost (pct-based, base 4, max 100%)
-    // We approximate BE = 1 for simplicity (construction cost uses BE for mills)
-    const millsPct = pctBuildingEffect(4, s.mills, s.acres, 1);
-    const millsMod = 1 - Math.min(millsPct / 100, 1);
-
-    // BB and Double Speed both ×2 cost
-    const costDoubleMod = (s.spellBB || s.doubleSpeed) ? 2.0 : 1;
-
-    let ritualCostMod = 1;
-    if (s.ritualData && s.ritualData.effects.constructionCost) {
-      ritualCostMod = 1 + s.ritualData.effects.constructionCost * s.ritualEff;
-    }
-
-    const artMod = artisanMod(s.sciArtisan);
-    return Math.round(baseCost * raceMod * persMod * millsMod * costDoubleMod * ritualCostMod * artMod);
+    const engineState = {
+      race: s.race, personality: s.personality,
+      acres: s.acres, buildings: s.currentBuildings,
+      spellBuildBoon: s.spellBB, doubleSpeed: s.doubleSpeed,
+      ritual: s.ritual, ritualEffectiveness: s.ritualEff,
+      sciArtisan: s.sciArtisan, dragon: 'none',
+      peasants: s.peasants, prisoners: 0, sciTools: 0,
+      spellGhostWorkers: false, spellBlizzard: false, spellConstructionDelays: false,
+    };
+    return Engine.calcConstructionCost(engineState).constructionCost;
   }
 
   // ── Training time (ticks) ────────────────────────────────────────────────
 
   /**
-   * Returns the number of ticks to train a batch of units (all complete together).
-   *
-   * Modifiers:
-   *   Inspire Army:       ×0.80
-   *   Hero's Inspiration: ×0.70 (stronger; mutually exclusive)
-   *   Valor science:      1 - sciValor/100 (max 25%)
-   *   Haste ritual:       ×(1 + effect*eff) where effect = -0.25
-   *   Training Grounds:   pct-based reduction (base 1, max 25%)
+   * Returns the number of ticks to train a batch of units.
+   * Delegates to Engine.calcTrainingTime.
    */
   function calcTrainingTicks(s) {
-    const base = 24;
-    const raceMod  = s.race.mods.trainingTime || 1;
-    const persMod  = s.personality.mods.trainingTime || 1;
-
-    // IA and HI are mutually exclusive — use the stronger one
-    const inspireMod = s.spellHI ? 0.70 : (s.spellIA ? 0.80 : 1);
-
-    const valMod = valorMod(s.sciValor);
-
-    let ritualTrainMod = 1;
-    if (s.ritualData && s.ritualData.effects.trainingTime) {
-      ritualTrainMod = 1 + s.ritualData.effects.trainingTime * s.ritualEff;
-    }
-
-    // Training grounds pct-based reduction (base 1, max 25%)
-    const tgReduction = pctBuildingEffect(1, s.trainingGrounds, s.acres, 1);
-    const tgMod = 1 - Math.min(tgReduction / 100, 0.25);
-
-    const raw = base * raceMod * persMod * inspireMod * valMod * ritualTrainMod * tgMod;
-    return Math.max(1, Math.round(raw));
+    const engineState = {
+      race: s.race, personality: s.personality,
+      acres: s.acres, buildings: s.currentBuildings,
+      spellInspireArmy: s.spellIA, spellHerosInspiration: s.spellHI,
+      sciValor: s.sciValor,
+      ritual: s.ritual, ritualEffectiveness: s.ritualEff,
+      dragon: 'none',
+      peasants: s.peasants, prisoners: 0, sciTools: 0,
+      spellGhostWorkers: false, spellBlizzard: false, spellConstructionDelays: false,
+    };
+    return Engine.calcTrainingTime(engineState).trainingTime;
   }
 
   // ── Training cost (gc total for a unit type) ─────────────────────────────
 
   /**
-   * Returns the total gold cost to train `count` units of the given base cost,
-   * given an armoury count for the training cost reduction.
-   *
-   * armouriesCount: the armouries at time of training (may be target count).
+   * Returns the total gold cost to train `count` units.
+   * Delegates to Engine.calcTrainingCost.
    */
   function calcTrainingCost(count, unitBaseCost, s, armouriesCount) {
-    if (count <= 0) return 0;
-    const raceMod = s.race.mods.trainingCost || 1;
-    const persMod = s.personality.mods.trainingCost || 1;
-
-    // Armouries reduce training cost (pct-based, base 1.5, max 37.5%)
-    const armReduction = pctBuildingEffect(1.5, armouriesCount, s.acres, 1);
-    const armMod = 1 - Math.min(armReduction / 100, 0.375);
-
-    return Math.round(count * unitBaseCost * raceMod * persMod * armMod);
+    return Engine.calcTrainingCost(count, unitBaseCost, s, armouriesCount);
   }
 
   // ── Draft calculation ────────────────────────────────────────────────────
@@ -1025,9 +904,9 @@
     };
   }
 
-  // ── Formatting helpers ──
-  function fmtNum(n) { return Math.round(n).toLocaleString(); }
-  function fmtGc(n)  { return Math.round(n).toLocaleString() + ' gc'; }
+  // ── Formatting helpers (aliases into Utils) ──
+  const fmtNum = Utils.fmtNum;
+  const fmtGc = Utils.fmtGc;
 
   function fmtTick(absTick, plan) {
     return ticksToUTStr(absTick);
@@ -1926,12 +1805,7 @@
     _evoData = simData;
   }
 
-  function fmtK(n) {
-    const abs = Math.abs(n);
-    if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    if (abs >= 1e3) return (n / 1e3).toFixed(0) + 'k';
-    return Math.round(n).toString();
-  }
+  const fmtK = Utils.fmtK;
 
   // Hover on evolution chart
   evoCanvas.addEventListener('mousemove', (e) => {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Chrome extension (Manifest V3) providing smart tools/calculators for the text-based MMO "Utopia" (utopia-game.com). Currently implements an **EOWCF (End-of-War Ceasefire) Planner** that scrapes in-game data and runs economic simulations.
+Chrome extension (Manifest V3) providing smart tools/calculators for the text-based MMO "Utopia" (utopia-game.com). Implements an **EOWCF Planner**, **Tick Simulator**, and **CF Pumping Planner** — all sharing a core formula engine.
 
 Source of truth for game rules: `utopia_wiki.md` (~565KB, player-maintained, may have gaps). Current game age: **Age 114**. When wiki data conflicts, prefer the Age 114 section (lines 1-700).
 
@@ -33,11 +33,16 @@ Content Script (scraper/content_script.js) -- runs on every game page
 chrome.storage.local (merged game data) <-- Background worker (background.js) handles messaging
     |
     v
-EOWCF Planner UI (eowcf/index.html)
-    | ui.js imports data, fills form fields
-    | Engine (eowcf/engine.js) runs calculations
+Core Modules (core/)
+    | Engine (core/engine.js) — pure game formulas
+    | StateBuilder (core/state.js) — builds engine state from scraped data
+    | Simulator (core/simulator.js) — reusable tick loop
+    | Utils (core/utils.js) — shared formatters (fmtK, fmtNum, fmtGc, etc.)
     v
-Result cards rendered in DOM
+Views (each loads core/ + own UI code)
+    | eowcf/ui.js — EOWCF Planner
+    | simulator/simulator.js — Tick Simulator
+    | cf-pumping/pumping.js — CF Pumping Planner
 ```
 
 ### Key Design Decisions
@@ -45,19 +50,19 @@ Result cards rendered in DOM
 - **Page detection by content, not URL:** The game's URLs are unreliable, so scrapers identify pages by headings, table structures, and DOM elements (e.g., `<h2>Affairs of the State</h2>` for the state page).
 - **Merge-on-save:** Each scraper returns data for one page. Data is merged into a single `gameData` object in `chrome.storage.local`, preserving fields from other pages. Per-page timestamps track data freshness.
 - **Active spells replace, not merge:** `activeSpells` and `activeSpellsFromThrone` are always complete snapshots — they overwrite old data to prevent expired spells from persisting.
-- **Building counts include WIP:** The game's council_internal page shows built + in-construction combined. The engine uses these combined counts for building effects (flat rates, percentage bonuses). However, **in-construction buildings do NOT provide jobs** — only completed buildings count toward Available Jobs and Optimal Workers for BE. This has cascading effects:
-  - Fewer jobs → lower Optimal Workers → higher % Jobs Filled → **higher BE** (when understaffed)
-  - Fewer jobs → lower Unfilled Jobs count → **higher effective employment**
-  - Building effects (bank income, farm food, tower runes, training grounds OME, etc.) still use the full count including WIP
+- **Building counts include WIP:** The game's council_internal page shows built + in-construction combined. The engine uses these combined counts for everything: building effects (flat rates, percentage bonuses) AND job calculations. **In-construction buildings DO provide jobs** — all buildings count toward Available Jobs and Optimal Workers for BE.
 - **Barren Land is derived:** Calculated as `acres - sum(all buildings)`, shown as read-only in the UI.
 
 ### Core Modules
 
 - **`data/game_data.js`** — All Age 114 static data: 9 races (no Gnome), 10 personalities, buildings, sciences, honor titles, rituals, dragons, EOWCF constants. This is the single source for race/personality modifiers.
 - **`data/spells.js`** — Spell definitions with `engineEffects` mapping to engine formula keys. Only fading (duration) spells are tracked.
-- **`scraper/scrapers.js`** — `Scrapers` object with per-page extraction methods. Each returns `{ _page, _scrapedAt, ...fields }` or `null` if wrong page. Also contains helper parsers (`parseNum`, `parsePct`, `parseUtopianDate`) and name-mapping tables (race-specific unit names to generic types, building display names to keys).
-- **`eowcf/engine.js`** — `Engine` object with pure calculation functions (`calcBE`, `calcIncome`, `calcWages`, `calcFood`, `calcRunes`, `calcPopGrowth`, `getHonorMods`). Each function takes a `state` object and returns a detailed breakdown. `gatherState()` reads all UI inputs into the state object.
-- **`eowcf/ui.js`** — IIFE that wires up the DOM: populates dropdowns from `GAME_DATA`, attaches input listeners, calls `Engine` functions on every change, renders result cards. Handles import from `chrome.storage` and EOWCF state persistence.
+- **`scraper/scrapers.js`** — `Scrapers` object with per-page extraction methods. Each returns `{ _page, _scrapedAt, ...fields }` or `null` if wrong page. Also contains helper parsers (`parseNum`, `parsePct`, `parseUtopianDate`) and name-mapping tables.
+- **`core/engine.js`** — `Engine` object with pure calculation functions: `calcBE`, `calcIncome`, `calcWages`, `calcFood`, `calcRunes`, `calcPopGrowth`, `calcDraft`, `getHonorMods`, `calcConstructionTime/Cost`, `calcRazeCost`, `calcTrainingTime/Cost`. No DOM access.
+- **`core/state.js`** — `StateBuilder` with `fromScrapedData(d)` to build Engine-compatible state from chrome.storage data. Eliminates duplicated state construction across views.
+- **`core/simulator.js`** — `Simulator.run(state, options)` for reusable tick-by-tick simulation with configurable stop conditions and per-tick hooks.
+- **`core/utils.js`** — Shared utilities: `fmtK`, `fmtNum`, `fmtGc`, `fmtPct`, `deepClone`.
+- **`eowcf/ui.js`** — EOWCF Planner view. Populates dropdowns, attaches input listeners, calls Engine, renders result cards. Has local `gatherState()` for reading DOM form inputs.
 
 ### Formula Pattern
 
