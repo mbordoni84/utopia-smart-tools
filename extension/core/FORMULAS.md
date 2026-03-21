@@ -16,7 +16,7 @@ BE = 0.5 * (1 + %Jobs) * Race * Pers * ToolsSci * Ritual * Dragon * Blizzard * C
 - **Construction Delays**: 0.90x BE (NOT shown in game's BE display)
 - Practical cap at 1.5 to avoid unrealistic values
 
-**Discovery**: In-construction buildings do NOT provide jobs or building effects. Game's council_internal page shows built + WIP combined in the "Quantity" column, but calculations use built-only counts. Confirmed: Nessuno 338 TG scraped (294 built + 44 WIP) — TG effect 12.43% matches 294 built, not 338; jobs gap of 1,100 = 44 × 25. StateBuilder subtracts inConstruction from scraped counts.
+**Discovery**: The game's council_internal "Quantity" column is the authoritative building count for ALL calculations — jobs, building effects, max pop, birth rate. The engine uses raw scraped Quantity as `state.buildings` with no WIP subtraction. Confirmed with fresh same-tick data: TG=338 gives 13.58% effect (game 13.57%), bank=243 gives 15.62% (game 15.61%), homes=243 gives 72.9 birth (game 72.9). Previous analysis with stale cross-tick data was misleading.
 
 **Discovery**: Game BE adjusts gradually (not instantly) when workers/buildings change. Expect ~3% gap when recently changed.
 

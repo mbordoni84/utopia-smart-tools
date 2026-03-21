@@ -88,10 +88,9 @@
       fill('elites', d.elites || 0);
       fill('thieves', d.thieves || 0);
 
-      // Buildings — subtract in-construction to get built-only counts.
-      // Game calculates jobs and building effects using built buildings only.
+      // Buildings — use raw scraped Quantity column as-is.
+      // Game uses this for everything: jobs, effects, max pop, birth rate.
       const bld = d.buildings || {};
-      const ic = d.inConstruction || {};
       const bldMap = {
         homes:'bldHomes', farms:'bldFarms', mills:'bldMills', banks:'bldBanks',
         armouries:'bldArmouries', trainingGrounds:'bldTrainingGrounds',
@@ -101,13 +100,13 @@
         universities:'bldUniversities', libraries:'bldLibraries',
         stables:'bldStables', dungeons:'bldDungeons'
       };
-      for (const [key, id] of Object.entries(bldMap)) fill(id, Math.max(0, (bld[key] || 0) - (ic[key] || 0)));
+      for (const [key, id] of Object.entries(bldMap)) fill(id, bld[key] || 0);
 
-      // Save built-only buildings for accurate maxPop in draft calculation
+      // Save buildings for accurate maxPop in draft calculation
       _importedBuildings = Object.fromEntries(
-        Object.keys(GAME_DATA.buildings).map(k => [k, Math.max(0, (bld[k] || 0) - (ic[k] || 0))])
+        Object.keys(GAME_DATA.buildings).map(k => [k, bld[k] || 0])
       );
-      _importedInConstruction = ic;
+      _importedInConstruction = d.inConstruction || {};
 
       // Sciences
       const sci = d.sciences || {};

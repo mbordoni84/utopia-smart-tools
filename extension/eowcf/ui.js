@@ -420,6 +420,7 @@
       wizards: parseInt(document.getElementById('wizards').value) || 0,
       prisoners: parseInt(document.getElementById('prisoners').value) || 0,
       buildings,
+      inConstruction: window._inConstruction || {},
       sciAlchemy: Math.abs(parseFloat(document.getElementById('sciAlchemy').value) || 0),
       sciTools: Math.abs(parseFloat(document.getElementById('sciTools').value) || 0),
       sciProduction: Math.abs(parseFloat(document.getElementById('sciProduction').value) || 0),
@@ -762,17 +763,16 @@
       fill('prisoners', d.prisoners);
       fill('wageRate', d.wageRate);
 
-      // Buildings page data — subtract in-construction to get built-only counts.
-      // Game calculates jobs and building effects using built buildings only.
-      const ic = d.inConstruction || {};
+      // Buildings page data — use raw scraped Quantity column as-is.
+      // Game uses this for everything: jobs, effects, max pop, birth rate.
       if (d.buildings) {
         for (const [key, count] of Object.entries(d.buildings)) {
-          fill('bld_' + key, Math.max(0, (count || 0) - (ic[key] || 0)));
+          fill('bld_' + key, count);
         }
       }
 
       // In-construction data — store globally for display
-      window._inConstruction = ic;
+      window._inConstruction = d.inConstruction || {};
 
       // In-training data — store globally for engine use (food & wages)
       window._inTraining = d.inTraining || {};

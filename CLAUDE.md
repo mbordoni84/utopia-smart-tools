@@ -50,7 +50,7 @@ Views (each loads core/ + own UI code)
 - **Page detection by content, not URL:** The game's URLs are unreliable, so scrapers identify pages by headings, table structures, and DOM elements (e.g., `<h2>Affairs of the State</h2>` for the state page).
 - **Merge-on-save:** Each scraper returns data for one page. Data is merged into a single `gameData` object in `chrome.storage.local`, preserving fields from other pages. Per-page timestamps track data freshness.
 - **Active spells replace, not merge:** `activeSpells` and `activeSpellsFromThrone` are always complete snapshots — they overwrite old data to prevent expired spells from persisting.
-- **Building counts include WIP but engine uses built-only:** The game's council_internal page shows built + in-construction combined in the "Quantity" column. However, the game calculates jobs, BE, and building effects using **built-only** counts. `StateBuilder.fromScrapedData()` subtracts `inConstruction` from scraped `buildings` to get built-only counts for the engine.
+- **Building counts include WIP:** The game's council_internal "Quantity" column shows built + in-construction combined and is used for ALL calculations (jobs, effects, max pop, birth rate). The engine uses raw scraped Quantity as `state.buildings` — no WIP subtraction.
 - **Barren Land is derived:** Calculated as `acres - sum(all buildings)`, shown as read-only in the UI.
 
 ### Core Modules
