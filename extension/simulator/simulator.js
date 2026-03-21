@@ -581,7 +581,7 @@
     const H = canvas.height;
     canvas.width = W;
 
-    _chartStore[canvasId] = { results, series: [{ key: 'milPct', label: 'Army %', color: '#e07040' }], W, H, targetPct };
+    _chartStore[canvasId] = { results, series: [{ key: 'milPct', label: 'Army %', color: '#e07040' }, { key: 'be', label: 'BE%', color: '#9b59b6' }], W, H, targetPct };
 
     if (!canvas._hoverReady) {
       canvas._hoverReady = true;
@@ -610,7 +610,11 @@
             <span>${(row.milPct * 100).toFixed(1)}%</span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">
-            <span style="color:#f8c84a">Target</span>
+            <span style="color:#9b59b6">BE%</span>
+            <span>${(row.be * 100).toFixed(1)}%</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">
+            <span style="color:#4ecdc4">Target</span>
             <span>${(store.targetPct * 100).toFixed(1)}%</span>
           </div>`;
         _tooltip.style.display = 'block';
@@ -640,8 +644,9 @@
 
     ctx.clearRect(0, 0, W, H);
 
-    const minVal = 0;
-    const maxVal = Math.max(targetPct * 1.05, ...results.map(r => r.milPct), 0.01);
+    const allVals = [...results.map(r => r.milPct), ...results.map(r => r.be), targetPct];
+    const minVal = Math.max(0, Math.min(...allVals) * 0.97);
+    const maxVal = Math.max(...allVals) * 1.03;
     const range = maxVal - minVal;
     const toX = (i) => pad.left + (i / Math.max(n - 1, 1)) * chartW;
     const toY = (v) => pad.top + chartH - ((v - minVal) / range) * chartH;
@@ -682,21 +687,40 @@
     });
     ctx.stroke();
 
-    // Hover crosshair + dot
+    // BE% line
+    ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    results.forEach((r, i) => {
+      const x = toX(i), y = toY(r.be);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Hover crosshair + dots
     if (hoverIdx >= 0 && hoverIdx < n) {
       const hx = toX(hoverIdx);
       ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, pad.top + chartH); ctx.stroke();
-      const hy = toY(results[hoverIdx].milPct);
+      // Mil% dot
+      const hy1 = toY(results[hoverIdx].milPct);
       ctx.fillStyle = '#e07040';
-      ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(hx, hy1, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1.5; ctx.stroke();
+      // BE% dot
+      const hy2 = toY(results[hoverIdx].be);
+      ctx.fillStyle = '#9b59b6';
+      ctx.beginPath(); ctx.arc(hx, hy2, 4, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1.5; ctx.stroke();
     }
 
     // Legend
-    ctx.fillStyle = '#e07040'; ctx.fillRect(pad.left, pad.top + chartH + 22, 16, 3);
-    ctx.fillStyle = '#aaa'; ctx.font = '11px system-ui'; ctx.textAlign = 'left';
-    ctx.fillText('Army % of Max Pop', pad.left + 20, pad.top + chartH + 30);
+    ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+    let lx = pad.left;
+    ctx.fillStyle = '#e07040'; ctx.fillRect(lx, pad.top + chartH + 22, 16, 3);
+    ctx.fillStyle = '#aaa'; ctx.fillText('Army % of Max Pop', lx + 20, pad.top + chartH + 30);
+    lx += 20 + ctx.measureText('Army % of Max Pop').width + 20;
+    ctx.fillStyle = '#9b59b6'; ctx.fillRect(lx, pad.top + chartH + 22, 16, 3);
+    ctx.fillStyle = '#aaa'; ctx.fillText('BE%', lx + 20, pad.top + chartH + 30);
   }
 
   function fmtK(n) {
