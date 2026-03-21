@@ -282,6 +282,17 @@ var SPELL_DATA = {
   // These affect your province when active. The scraper should detect them
   // from the throne/status page if they show up there.
 
+  PLAGUE: {
+    name: 'Plague',
+    type: 'offensive',
+    avgDuration: 12,
+    description: 'No Population Growth, -15% Income (tax collection), -10% OME, -15% DME',
+    engineEffects: {
+      birthRateFlat: -1.0,  // Eliminates all birth rate (set to negative to cancel base)
+      income: -0.15         // calcIncome — applies to tax collection
+    }
+  },
+
   CHASTITY: {
     name: 'Chastity',
     type: 'offensive',

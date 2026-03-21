@@ -172,7 +172,7 @@ const Scrapers = {
     'ghost workers': 'GHOST_WORKERS', 'mist': 'MIST', 'reflect magic': 'REFLECT_MAGIC',
     'bloodlust': 'BLOODLUST', 'patriotism': 'PATRIOTISM',
     // Offensive spells
-    'chastity': 'CHASTITY', 'drought': 'DROUGHT', 'gluttony': 'GLUTTONY',
+    'plague': 'PLAGUE', 'chastity': 'CHASTITY', 'drought': 'DROUGHT', 'gluttony': 'GLUTTONY',
     'greed': 'GREED', 'blizzard': 'BLIZZARD', 'storms': 'STORMS',
     'explosions': 'EXPLOSIONS', 'expose thieves': 'EXPOSE_THIEVES',
     'pitfalls': 'PITFALLS', 'meteor showers': 'METEOR_SHOWERS',
@@ -187,7 +187,7 @@ const Scrapers = {
   scienceNameMap: {
     'alchemy': 'alchemy', 'tools': 'tools', 'housing': 'housing',
     'production': 'production', 'bookkeeping': 'bookkeeping', 'artisan': 'artisan',
-    'tactics': 'tactics', 'valor': 'valor', 'heroism': 'heroism', 'siege': 'siege',
+    'strategy': 'strategy', 'tactics': 'tactics', 'valor': 'valor', 'heroism': 'heroism', 'siege': 'siege',
     'channeling': 'channeling', 'shielding': 'shielding', 'sorcery': 'sorcery',
     'crime': 'crime', 'cunning': 'cunning', 'finesse': 'finesse'
   },

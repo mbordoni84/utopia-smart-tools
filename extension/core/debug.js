@@ -36,6 +36,8 @@ const Debug = {
     const buildTime = Engine.calcConstructionTime(state);
     const buildCost = Engine.calcConstructionCost(state);
     const razeCost  = Engine.calcRazeCost(state);
+    const ome       = Engine.calcOME(state);
+    const dme       = Engine.calcDME(state);
 
     let trainingTime = null;
     try { trainingTime = Engine.calcTrainingTime(state); } catch (e) { /* optional */ }
@@ -44,7 +46,7 @@ const Debug = {
 
     // Build comparisons by category
     const comparisons = this._buildComparisons(scraped, state, {
-      income, wages, food, runes, pop, draft, buildTime, buildCost, razeCost, trainingTime
+      income, wages, food, runes, pop, draft, buildTime, buildCost, razeCost, trainingTime, ome, dme
     });
 
     // Warnings
@@ -72,6 +74,7 @@ const Debug = {
         income, wages, food, runes, pop, draft,
         netIncome,
         buildTime, buildCost, razeCost, trainingTime,
+        ome, dme,
       },
 
       warnings,

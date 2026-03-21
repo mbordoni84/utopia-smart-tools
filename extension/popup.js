@@ -1,5 +1,5 @@
 document.getElementById('openEowcf').addEventListener('click', () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('eowcf/index.html') });
+  chrome.tabs.create({ url: chrome.runtime.getURL('home-data/index.html') });
 });
 
 document.getElementById('openSimulator').addEventListener('click', () => {

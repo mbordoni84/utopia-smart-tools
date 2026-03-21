@@ -426,6 +426,8 @@
       sciProduction: Math.abs(parseFloat(document.getElementById('sciProduction').value) || 0),
       sciHousing: Math.abs(parseFloat(document.getElementById('sciHousing').value) || 0),
       sciBookkeeping: Math.abs(parseFloat(document.getElementById('sciBookkeeping').value) || 0),
+      sciStrategy: Math.abs(parseFloat(document.getElementById('sciStrategy').value) || 0),
+      sciTactics: Math.abs(parseFloat(document.getElementById('sciTactics').value) || 0),
       sciHeroism: Math.abs(parseFloat(document.getElementById('sciHeroism').value) || 0),
       sciValor: Math.abs(parseFloat(document.getElementById('sciValor').value) || 0),
       sciArtisan: Math.abs(parseFloat(document.getElementById('sciArtisan').value) || 0),
@@ -437,16 +439,22 @@
       spellInspireArmy: !!document.getElementById('spell_INSPIRE_ARMY')?.checked,
       spellHerosInspiration: !!document.getElementById('spell_HEROS_INSPIRATION')?.checked,
       spellGhostWorkers: !!document.getElementById('spell_GHOST_WORKERS')?.checked,
+      spellFanaticism: !!document.getElementById('spell_FANATICISM')?.checked,
+      spellBloodlust: !!document.getElementById('spell_BLOODLUST')?.checked,
+      spellMinorProtection: !!document.getElementById('spell_MINOR_PROTECTION')?.checked,
+      spellGreaterProtection: !!document.getElementById('spell_GREATER_PROTECTION')?.checked,
       spellDrought: !!document.getElementById('spell_DROUGHT')?.checked,
       spellGluttony: !!document.getElementById('spell_GLUTTONY')?.checked,
       spellGreed: !!document.getElementById('spell_GREED')?.checked,
       spellBlizzard: !!document.getElementById('spell_BLIZZARD')?.checked,
       spellRiots: !!document.getElementById('spell_RIOTS')?.checked,
       spellConstructionDelays: !!document.getElementById('spell_CONSTRUCTION_DELAYS')?.checked,
+      spellPlague: !!document.getElementById('spell_PLAGUE')?.checked,
       ritual: document.getElementById('ritual').value,
       ritualEffectiveness: (parseFloat(document.getElementById('ritualEffectiveness')?.value) || 100) / 100,
       dragon: document.getElementById('dragon')?.value || 'none',
       wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100,
+      multiAttackProtection: document.getElementById('multiAttackProtection')?.value || 'not hit',
       inTraining: window._inTraining || {},
       inConstruction: window._inConstruction || {},
     };
@@ -689,6 +697,71 @@
       ['Raze Cost', fmt(razeCost.razeCost) + ' gc/acre']
     ].filter(Boolean));
 
+    // --- OME Card ---
+    const ome = Engine.calcOME(state);
+    renderCard('Offensive Military Efficiency (OME)', [
+      ['Base ME', ome.baseME.toFixed(2) + '%', 'highlight'],
+      ['  Wage Rate', fmtPct(ome.baseMEResult.wageRate)],
+      ['  Ruby Dragon', ome.baseMEResult.rubyMod !== 1 ? 'x' + ome.baseMEResult.rubyMod.toFixed(2) : '-'],
+      ['  MAP (' + (state.multiAttackProtection || 'not hit') + ')', ome.baseMEResult.mapMod !== 1 ? 'x' + ome.baseMEResult.mapMod.toFixed(4) : '-'],
+      ['Training Grounds Bonus', '+' + ome.tgBonus.toFixed(2) + '%'],
+      ['Honor (' + (state.honor ? state.honor.titleName : 'Peasant') + ')', 'x' + ome.honorOME.toFixed(3)],
+      ['Effective Base', (ome.effectiveBase + ome.tgBonus).toFixed(2) + '%', 'highlight'],
+      ['Tactics Science', 'x' + ome.sciTactics.toFixed(3)],
+      ome.raceOME !== 1
+        ? [`Race (${state.race.name})`, 'x' + ome.raceOME.toFixed(2)]
+        : null,
+      ome.persOME !== 1
+        ? [`Personality (${state.personality.name})`, 'x' + ome.persOME.toFixed(2)]
+        : null,
+      ome.fanaticism !== 1
+        ? ['Fanaticism', 'x' + ome.fanaticism.toFixed(2)]
+        : null,
+      ome.bloodlust !== 1
+        ? ['Bloodlust', 'x' + ome.bloodlust.toFixed(2)]
+        : null,
+      ome.plague !== 1
+        ? ['Plague', 'x' + ome.plague.toFixed(2)]
+        : null,
+      ome.ritualOME !== 1
+        ? [`${GAME_DATA.rituals[state.ritual]?.name || state.ritual} Ritual`, 'x' + ome.ritualOME.toFixed(3)]
+        : null,
+      ['Final OME', ome.ome.toFixed(2) + '%', 'highlight']
+    ].filter(Boolean));
+
+    // --- DME Card ---
+    const dme = Engine.calcDME(state);
+    renderCard('Defensive Military Efficiency (DME)', [
+      ['Base ME', dme.baseME.toFixed(2) + '%', 'highlight'],
+      ['  Wage Rate', fmtPct(dme.baseMEResult.wageRate)],
+      ['  Ruby Dragon', dme.baseMEResult.rubyMod !== 1 ? 'x' + dme.baseMEResult.rubyMod.toFixed(2) : '-'],
+      ['  MAP (' + (state.multiAttackProtection || 'not hit') + ')', dme.baseMEResult.mapMod !== 1 ? 'x' + dme.baseMEResult.mapMod.toFixed(4) : '-'],
+      ['Forts Bonus', '+' + dme.fortsBonus.toFixed(2) + '%'],
+      ['Strategy Science', 'x' + dme.sciStrategy.toFixed(3)],
+      dme.raceDME !== 1
+        ? [`Race (${state.race.name})`, 'x' + dme.raceDME.toFixed(2)]
+        : null,
+      dme.persDME !== 1
+        ? [`Personality (${state.personality.name})`, 'x' + dme.persDME.toFixed(2)]
+        : null,
+      dme.minorProt !== 1
+        ? ['Minor Protection', 'x' + dme.minorProt.toFixed(2)]
+        : null,
+      dme.greaterProt !== 1
+        ? ['Greater Protection', 'x' + dme.greaterProt.toFixed(2)]
+        : null,
+      dme.fanaticism !== 1
+        ? ['Fanaticism', 'x' + dme.fanaticism.toFixed(2)]
+        : null,
+      dme.plague !== 1
+        ? ['Plague', 'x' + dme.plague.toFixed(2)]
+        : null,
+      dme.ritualDME !== 1
+        ? [`${GAME_DATA.rituals[state.ritual]?.name || state.ritual} Ritual`, 'x' + dme.ritualDME.toFixed(3)]
+        : null,
+      ['Final DME', dme.dme.toFixed(2) + '%', 'highlight']
+    ].filter(Boolean));
+
     // Store last debug snapshot (uses core/debug.js)
     window._debugReport = Debug.buildReport(window._scrapedGameData || null, state);
 
@@ -763,6 +836,11 @@
       fill('prisoners', d.prisoners);
       fill('wageRate', d.wageRate);
 
+      // Multi-Attack Protection from state page
+      if (d.multiAttackProtection) {
+        fill('multiAttackProtection', d.multiAttackProtection.toLowerCase().trim());
+      }
+
       // Buildings page data — use raw scraped Quantity column as-is.
       // Game uses this for everything: jobs, effects, max pop, birth rate.
       if (d.buildings) {
@@ -794,6 +872,7 @@
         const sciFieldMap = {
           alchemy: 'sciAlchemy', tools: 'sciTools', housing: 'sciHousing',
           production: 'sciProduction', bookkeeping: 'sciBookkeeping',
+          strategy: 'sciStrategy', tactics: 'sciTactics',
           heroism: 'sciHeroism', valor: 'sciValor', artisan: 'sciArtisan'
         };
         for (const [key, pct] of Object.entries(d.sciences)) {

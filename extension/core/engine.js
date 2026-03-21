@@ -443,6 +443,134 @@ const Engine = {
     return result;
   },
 
+  // --- Multi-Attack Protection String → ME Bonus ---
+  // Converts MAP string from state page to ME multiplier bonus
+  // Formula: ME_boost = MAP_rating / 7.5
+  // Uses midpoint of each range for consistent calculations
+  mapStringToBonus(mapString) {
+    const normalized = (mapString || '').toLowerCase().trim();
+    const mapValues = {
+      'not hit': 0,
+      'not much': 0.014,              // alias for Couple (game displays "Not much")
+      'couple': 0.014,                // midpoint 10.5% → 10.5/7.5 = 1.4%
+      'moderately': 0.041,            // midpoint 30.5% → 30.5/7.5 = 4.07%
+      'moderately hit': 0.041,
+      'heavily': 0.067,               // midpoint 50.5% → 50.5/7.5 = 6.73%
+      'heavily hit': 0.067,
+      'extremely heavily': 0.100,     // midpoint 75.5% → 75.5/7.5 = 10.07%
+      'extremely heavily hit': 0.100
+    };
+    return mapValues[normalized] || 0;
+  },
+
+  // --- Base Military Efficiency ---
+  // Formula: (33 + 67 * (wageRate/100)^0.25) * RubyDragon * MAP_Bonus
+  calcBaseME(state) {
+    const wageRate = state.wageRate || 100;
+    const base = 33 + 67 * Math.pow(wageRate / 100, 0.25);
+
+    // Ruby Dragon penalty
+    const rubyMod = (state.dragon === 'ruby') ? 0.85 : 1.0;
+
+    // Multi-Attack Protection bonus
+    const mapBonus = this.mapStringToBonus(state.multiAttackProtection || 'not hit');
+    const mapMod = 1 + mapBonus;
+
+    const baseME = base * rubyMod * mapMod;
+
+    return { base, wageRate, rubyMod, mapBonus, mapMod, baseME };
+  },
+
+  // --- Offensive Military Efficiency (OME) ---
+  // Formula: (BaseME * Honor + TG_Bonus) * Tactics * Race * Pers * Spells * Ritual
+  calcOME(state) {
+    const baseMEResult = this.calcBaseME(state);
+    const baseME = baseMEResult.baseME;
+
+    // Training Grounds bonus (additivo a base)
+    const beResult = this.calcBE(state);
+    const tgBonus = this.calcPctBuildingEffect(
+      1.5, state.buildings.trainingGrounds || 0, state.acres, beResult.be
+    );
+
+    // Honor OME (moltiplicativo sulla base ME)
+    const honorOME = (state.honor && state.honor.ome) || 1.0;
+    const effectiveBase = baseME * honorOME;
+
+    // Science (Tactics)
+    const sciTactics = 1 + ((state.sciTactics || 0) / 100);
+
+    // Race
+    const raceOME = state.race.mods.ome || 1.0;
+
+    // Personality
+    const persOME = state.personality.mods.ome || 1.0;
+
+    // Spells
+    const fanaticism = state.spellFanaticism ? 1.05 : 1.0;
+    const bloodlust = state.spellBloodlust ? 1.10 : 1.0;
+    const plague = state.spellPlague ? 0.90 : 1.0;
+
+    // Ritual
+    let ritualOME = 1.0;
+    const ritualData = GAME_DATA.rituals[state.ritual];
+    if (ritualData && ritualData.effects.ome) {
+      ritualOME = 1 + ritualData.effects.ome * (state.ritualEffectiveness || 1);
+    }
+
+    const ome = (effectiveBase + tgBonus) * sciTactics * raceOME * persOME
+      * fanaticism * bloodlust * plague * ritualOME;
+
+    return {
+      baseMEResult, baseME, tgBonus, honorOME, effectiveBase, sciTactics,
+      raceOME, persOME, fanaticism, bloodlust, plague, ritualOME, ome
+    };
+  },
+
+  // --- Defensive Military Efficiency (DME) ---
+  // Formula: (BaseME + Forts_Bonus) * Strategy * Race * Pers * Spells * Ritual
+  // Note: NO Honor bonus for DME (per wiki)
+  calcDME(state) {
+    const baseMEResult = this.calcBaseME(state);
+    const baseME = baseMEResult.baseME;
+
+    // Forts bonus (additivo a base)
+    const beResult = this.calcBE(state);
+    const fortsBonus = this.calcPctBuildingEffect(
+      1.5, state.buildings.forts || 0, state.acres, beResult.be
+    );
+
+    // Science (Strategy)
+    const sciStrategy = 1 + ((state.sciStrategy || 0) / 100);
+
+    // Race
+    const raceDME = state.race.mods.dme || 1.0;
+
+    // Personality
+    const persDME = state.personality.mods.dme || 1.0;
+
+    // Spells
+    const minorProt = state.spellMinorProtection ? 1.05 : 1.0;
+    const greaterProt = state.spellGreaterProtection ? 1.05 : 1.0;
+    const fanaticism = state.spellFanaticism ? 0.95 : 1.0;
+    const plague = state.spellPlague ? 0.85 : 1.0;
+
+    // Ritual
+    let ritualDME = 1.0;
+    const ritualData = GAME_DATA.rituals[state.ritual];
+    if (ritualData && ritualData.effects.dme) {
+      ritualDME = 1 + ritualData.effects.dme * (state.ritualEffectiveness || 1);
+    }
+
+    const dme = (baseME + fortsBonus) * sciStrategy * raceDME * persDME
+      * minorProt * greaterProt * fanaticism * plague * ritualDME;
+
+    return {
+      baseMEResult, baseME, fortsBonus, sciStrategy, raceDME, persDME,
+      minorProt, greaterProt, fanaticism, plague, ritualDME, dme
+    };
+  },
+
   // --- Training Time (ticks) ---
   // 24 * Race * Pers * InspireArmy/HerosInspiration * Valor * Ritual * TrainingGrounds
   calcTrainingTime(state) {

@@ -521,6 +521,7 @@ const GAME_DATA = {
         attackTime: 1.0,
         specCredits: 1.0,
         buildCredits: 1.0,
+        honorEffects: 1.5,
         offSpecStrengthBonus: 2,
         honorLoss: 0.70,
         honorEffects: 1.50
