@@ -842,6 +842,42 @@ const Engine = {
   },
 
   // ---------------------------------------------------------------------------
+  // DRAFT PER TICK
+  // ---------------------------------------------------------------------------
+  // Wiki: Military/Draft section
+  //
+  // Drafted soldiers = FLOOR(peasants * draftRate)
+  // Draft rate options: none(0%), normal(0.5%), aggressive(1.5%), emergency(2%), war(2.5%)
+  //
+  // Draft cost per soldier:
+  //   baseWage = MAX(wageRate * 0.5, 7.5)
+  //   levelFactor = MAX(1.0154 * (mil/maxPop)^2 + 1.1759 * (mil/maxPop) + 0.3633, 1)
+  //   costPerSoldier = baseWage * levelFactor
+  //
+  // Note: Wiki formula produces fewer soldiers than observed in-game.
+  //       A draftMultiplier (default 1.0) is exposed for tuning.
+  // ---------------------------------------------------------------------------
+  calcDraft(state) {
+    const draftRates = { none: 0, normal: 0.005, aggressive: 0.015, emergency: 0.02, war: 0.025 };
+    const rate = draftRates[state.draftRate] || 0;
+    if (rate === 0) return { drafted: 0, draftCost: 0, costPerSoldier: 0, levelFactor: 1, rate: 0 };
+
+    const draftMultiplier = state.draftMultiplier || 1;
+    const drafted = Math.floor(state.peasants * rate * draftMultiplier);
+
+    const maxPop = state.maxPop || 1;
+    const totalMilitary = (state.soldiers || 0) + (state.offSpecs || 0) + (state.defSpecs || 0)
+      + (state.elites || 0) + (state.thieves || 0);
+    const milRatio = totalMilitary / maxPop;
+    const levelFactor = Math.max(1.0154 * milRatio * milRatio + 1.1759 * milRatio + 0.3633, 1);
+    const baseWage = Math.max((state.wageRate || 100) * 0.5, 7.5);
+    const costPerSoldier = baseWage * levelFactor;
+    const draftCost = Math.round(drafted * costPerSoldier);
+
+    return { drafted, draftCost, costPerSoldier, levelFactor, milRatio, rate };
+  },
+
+  // ---------------------------------------------------------------------------
   // HONOR TITLE MODIFIERS
   // ---------------------------------------------------------------------------
   // Wiki: Honor section (lines 5327-5370)

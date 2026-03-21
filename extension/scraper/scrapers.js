@@ -576,16 +576,25 @@ const Scrapers = {
 
     // Search all tables for rows containing building names
     // Skip schedule tables (they have 24 tick columns, not building counts)
+    //
+    // The Build page uses a two-column layout: each <tr> contains TWO buildings
+    // side by side, each with their own <th> + <td>. We must iterate ALL <th>
+    // elements per row (not just the first) to capture both columns.
+    // council_internal page has one building per row — same logic works fine.
     const allRows = doc.querySelectorAll('table:not(.schedule) tr');
     for (const row of allRows) {
-      const th = row.querySelector('th');
-      const tds = row.querySelectorAll('td');
-      if (!th || tds.length < 1) continue;
-
-      const name = th.textContent.trim().toLowerCase();
-      const key = this.buildingNameMap[name];
-      if (key && !data.buildings[key]) {
-        data.buildings[key] = this.parseNum(tds[0].textContent);
+      const ths = row.querySelectorAll('th');
+      for (const th of ths) {
+        const name = th.textContent.trim().toLowerCase();
+        const key = this.buildingNameMap[name];
+        if (!key) continue;
+        // The count is in the first <td> immediately following this <th>
+        let next = th.nextElementSibling;
+        while (next && next.tagName !== 'TD') next = next.nextElementSibling;
+        if (!next) continue;
+        if (!data.buildings[key]) {
+          data.buildings[key] = this.parseNum(next.textContent);
+        }
       }
     }
 
