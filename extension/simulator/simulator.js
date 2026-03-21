@@ -181,12 +181,10 @@
 
     const numTicks = parseInt(document.getElementById('simTicks').value) || 24;
     const draftRate = document.getElementById('draftRate').value;
-    const draftMultiplier = parseFloat(document.getElementById('draftMultiplier').value) || 1.0;
 
     const results = [];
     const state = deepClone(startState);
     state.draftRate = draftRate;
-    state.draftMultiplier = draftMultiplier;
     state.eowcfTicksElapsed = 0;
 
     for (let tick = 1; tick <= numTicks; tick++) {

@@ -865,10 +865,9 @@ const Engine = {
     // Heroism science increases draft speed (wiki: "Draft Speed & Draft Costs")
     const heroismMod = 1 + (state.sciHeroism || 0) / 100;
 
-    // draftMultiplier: empirically confirmed ~1.3x constant not explained by wiki.
-    // Validated against live game data across 24 ticks with multiple provinces.
-    const draftMultiplier = state.draftMultiplier || 1;
-    const drafted = Math.floor(state.peasants * rate * heroismMod * draftMultiplier);
+    // 1.3x empirical constant: confirmed against 24 ticks of live game data.
+    // Not documented in wiki — likely a hidden game mechanic.
+    const drafted = Math.floor(state.peasants * rate * heroismMod * 1.3);
 
     const maxPop = state.maxPop || 1;
     const totalMilitary = (state.soldiers || 0) + (state.offSpecs || 0) + (state.defSpecs || 0)
