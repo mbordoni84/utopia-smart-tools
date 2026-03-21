@@ -24,9 +24,12 @@ const StateBuilder = {
     const personality = GAME_DATA.personalities[persKey] || GAME_DATA.personalities.generalIn;
 
     const bld = d.buildings || {};
+    const ic  = d.inConstruction || {};
     const buildings = {};
     for (const key of Object.keys(GAME_DATA.buildings)) {
-      buildings[key] = bld[key] || 0;
+      // Scraped counts may include WIP; subtract in-construction to get built-only.
+      // Game calculates jobs and building effects using built buildings only.
+      buildings[key] = Math.max(0, (bld[key] || 0) - (ic[key] || 0));
     }
 
     const sci = d.sciences || {};

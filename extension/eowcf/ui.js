@@ -513,7 +513,7 @@
       ['Tax (employed)', `${fmt(income.employed)} x 3gc = ${fmt(income.employed * 3)}gc`],
       ['Tax (unemployed)', `${fmt(income.unemployed)} x 1gc = ${fmt(income.unemployed)}gc`],
       ['Prisoners', `${fmt(state.prisoners)} x 0.75gc = ${fmt(income.prisonerIncome)}gc`],
-      ['Bank flat', `${fmt(state.buildings.banks || 0)} banks (built+WIP) x 25gc x ${fmtPct(income.beResult.be * 100)} BE = ${fmt(income.bankFlatIncome)}gc`],
+      ['Bank flat', `${fmt(state.buildings.banks || 0)} banks (built) x 25gc x ${fmtPct(income.beResult.be * 100)} BE = ${fmt(income.bankFlatIncome)}gc`],
       // Only show Miner's Mystique line if the spell is active
       income.minersMystique > 0
         ? ["Miner's Mystique", `${fmt(state.peasants)} x 0.3gc = ${fmt(income.minersMystique)}gc`]
@@ -572,7 +572,7 @@
     const food = Engine.calcFood(state);
     const netFoodClass = food.netFood >= 0 ? 'positive' : 'negative';
     renderCard('Food per Tick', [
-      ['Farm production', `${fmt(state.buildings.farms || 0)} farms (built+WIP) x 60 x ${fmtPct(food.beResult.be * 100)} BE = ${fmt(food.farmFood)} bushels`],
+      ['Farm production', `${fmt(state.buildings.farms || 0)} farms (built) x 60 x ${fmtPct(food.beResult.be * 100)} BE = ${fmt(food.farmFood)} bushels`],
       food.barrenFood > 0
         ? ['Barren land', `${fmt(state.buildings.barrenLand || 0)} x 2 = ${fmt(food.barrenFood)} bushels`]
         : null,
@@ -599,7 +599,7 @@
     const runes = Engine.calcRunes(state);
     const netRuneClass = runes.netRunes >= 0 ? 'positive' : 'negative';
     renderCard('Runes per Tick', [
-      ['Tower production', `${fmt(state.buildings.towers || 0)} towers (built+WIP) x 12 x ${fmtPct(food.beResult.be * 100)} BE = ${fmt(runes.towerRunes)} runes`],
+      ['Tower production', `${fmt(state.buildings.towers || 0)} towers (built) x 12 x ${fmtPct(food.beResult.be * 100)} BE = ${fmt(runes.towerRunes)} runes`],
       ['Production Science', 'x' + runes.prodSci.toFixed(3)],
       runes.honorRuneMod !== 1
         ? ['Honor (' + (state.honor ? state.honor.titleName : 'Peasant') + ')', 'x' + runes.honorRuneMod.toFixed(3)]
@@ -762,15 +762,17 @@
       fill('prisoners', d.prisoners);
       fill('wageRate', d.wageRate);
 
-      // Buildings page data
+      // Buildings page data — subtract in-construction to get built-only counts.
+      // Game calculates jobs and building effects using built buildings only.
+      const ic = d.inConstruction || {};
       if (d.buildings) {
         for (const [key, count] of Object.entries(d.buildings)) {
-          fill('bld_' + key, count);
+          fill('bld_' + key, Math.max(0, (count || 0) - (ic[key] || 0)));
         }
       }
 
-      // In-construction data — store globally for engine use
-      window._inConstruction = d.inConstruction || {};
+      // In-construction data — store globally for display
+      window._inConstruction = ic;
 
       // In-training data — store globally for engine use (food & wages)
       window._inTraining = d.inTraining || {};

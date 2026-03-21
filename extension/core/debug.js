@@ -139,10 +139,13 @@ const Debug = {
         scraped.unfilledJobs, engineUnfilled, 'buildings_page', 'Derived: totalJobs - availableWorkers');
     }
 
-    // Employment %
+    // Employment % — game shows "% of workers with jobs" (always 100% when workers < jobs)
+    // Engine's pctJobs is "workers / optimalWorkers" (staffing efficiency for BE).
+    // These are different metrics — not comparable. Stored for reference only.
     if (scraped.employment != null) {
-      add('buildingEfficiency', 'Employment %',
-        scraped.employment, income.beResult.pctJobs * 100, 'buildings_page');
+      add('buildingEfficiency', 'Employment % (game metric)',
+        scraped.employment, scraped.employment, 'buildings_page',
+        'Game metric only — engine pctJobs (' + (income.beResult.pctJobs * 100).toFixed(1) + '%) measures staffing efficiency, not comparable');
     }
 
     // =====================================================================
@@ -273,8 +276,8 @@ const Debug = {
         homesMaxPop, engineHomesExtra, 'building_effects_text');
     }
 
-    // Homes birth flat from buildingEffects
-    const homesBirth = this._parseBuildingEffectNumber(scraped, 'homes', /([\d,]+) additional peasants/);
+    // Homes birth flat from buildingEffects (value can be decimal, e.g. "72.9")
+    const homesBirth = this._parseBuildingEffectPct(scraped, 'homes', /([\d,.]+) additional peasants/);
     if (homesBirth != null) {
       add('population', 'Homes Birth Rate (flat)',
         homesBirth, pop.homesBorn, 'building_effects_text');
@@ -298,10 +301,10 @@ const Debug = {
     // MILITARY
     // =====================================================================
 
-    // Total army sanity check
+    // Total army sanity check (game excludes thieves from "army" count)
     if (scraped.army != null) {
       const engineArmy = (state.soldiers || 0) + (state.offSpecs || 0)
-        + (state.defSpecs || 0) + (state.elites || 0) + (state.thieves || 0);
+        + (state.defSpecs || 0) + (state.elites || 0);
       add('military', 'Total Army',
         scraped.army, engineArmy, 'military_page');
     }
