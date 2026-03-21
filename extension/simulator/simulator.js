@@ -202,7 +202,7 @@
 
       results.push({
         tick,
-        gold: Math.round(state.gold),
+        gold: Math.round(state.gold + netGold), // gold at END of tick (after income/wages/draft)
         netGold: Math.round(netGold),
         peasants: Math.round(state.peasants),
         soldiers: Math.round(state.soldiers),
@@ -211,9 +211,9 @@
         income: Math.round(income.modifiedIncome),
         wages: Math.round(wages.modifiedWages),
         be: income.beResult.be,
-        food: Math.round(state.food),
+        food: Math.round(Math.max(0, state.food + food.netFood)),
         netFood: Math.round(food.netFood),
-        runes: Math.round(state.runes),
+        runes: Math.round(Math.max(0, state.runes + runes.netRunes)),
         netRunes: Math.round(runes.netRunes),
       });
 
@@ -329,8 +329,24 @@
   }
 
   // ---------------------------------------------------------------------------
-  // CHARTS (Canvas 2D)
+  // CHARTS (Canvas 2D) — interactive with hover tooltips
   // ---------------------------------------------------------------------------
+
+  // Shared tooltip element
+  const _tooltip = document.createElement('div');
+  _tooltip.id = 'chartTooltip';
+  _tooltip.style.cssText = [
+    'position:fixed', 'display:none', 'pointer-events:none',
+    'background:#16213e', 'border:1px solid #c4a35a44', 'border-radius:6px',
+    'padding:10px 14px', 'font-size:12px', 'font-family:system-ui,sans-serif',
+    'color:#e0e0e0', 'z-index:9999', 'min-width:160px',
+    'box-shadow:0 4px 16px rgba(0,0,0,0.5)'
+  ].join(';');
+  document.body.appendChild(_tooltip);
+
+  // Stored chart data for re-draw on hover
+  const _chartStore = {};
+
   function renderCharts(results) {
     renderLineChart('chartEconomy', results, [
       { key: 'gold', label: 'Gold', color: '#c4a35a' },
@@ -353,29 +369,83 @@
   function renderLineChart(canvasId, results, series) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
 
-    // Scale canvas for display
     const W = canvas.offsetWidth || 700;
-    const H = canvas.height;
     canvas.width = W;
 
+    _chartStore[canvasId] = { results, series, W, H: canvas.height };
+
+    // Attach hover listeners once
+    if (!canvas._hoverReady) {
+      canvas._hoverReady = true;
+      canvas.style.cursor = 'crosshair';
+      canvas.addEventListener('mousemove', (e) => {
+        const store = _chartStore[canvasId];
+        if (!store) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const pad = { top: 20, right: 20, bottom: 40, left: 80 };
+        const chartW = store.W - pad.left - pad.right;
+        const n = store.results.length;
+        // Find nearest tick index by x position
+        let bestIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < n; i++) {
+          const x = pad.left + (i / Math.max(n - 1, 1)) * chartW;
+          const dist = Math.abs(mouseX - x);
+          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+        drawChart(canvas, store.results, store.series, store.W, store.H, bestIdx);
+        positionTooltip(e, store.results[bestIdx], store.series);
+      });
+      canvas.addEventListener('mouseleave', () => {
+        const store = _chartStore[canvasId];
+        if (store) drawChart(canvas, store.results, store.series, store.W, store.H, -1);
+        _tooltip.style.display = 'none';
+      });
+    }
+
+    drawChart(canvas, results, series, W, canvas.height, -1);
+  }
+
+  function positionTooltip(mouseEvent, row, series) {
+    const fmtNum = n => Math.round(n).toLocaleString();
+    const fmtPct = n => (n * 100).toFixed(1) + '%';
+    let html = `<div style="color:#c4a35a;font-weight:600;margin-bottom:6px">Tick ${row.tick}</div>`;
+    for (const s of series) {
+      const val = s.key === 'be' ? fmtPct(row[s.key]) : fmtNum(row[s.key]);
+      html += `<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">
+        <span style="color:${s.color}">${s.label}</span>
+        <span style="font-variant-numeric:tabular-nums">${val}</span>
+      </div>`;
+    }
+    _tooltip.innerHTML = html;
+    _tooltip.style.display = 'block';
+    // Keep tooltip within viewport
+    const tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
+    let tx = mouseEvent.clientX + 14, ty = mouseEvent.clientY - 10;
+    if (tx + tw > window.innerWidth - 8) tx = mouseEvent.clientX - tw - 14;
+    if (ty + th > window.innerHeight - 8) ty = window.innerHeight - th - 8;
+    _tooltip.style.left = tx + 'px';
+    _tooltip.style.top = ty + 'px';
+  }
+
+  function drawChart(canvas, results, series, W, H, hoverIdx) {
+    const ctx = canvas.getContext('2d');
     const pad = { top: 20, right: 20, bottom: 40, left: 80 };
     const chartW = W - pad.left - pad.right;
     const chartH = H - pad.top - pad.bottom;
 
     ctx.clearRect(0, 0, W, H);
 
-    // Get global min/max across all series
+    // Global min/max
     let allVals = [];
-    for (const s of series) {
-      allVals = allVals.concat(results.map(r => r[s.key]));
-    }
+    for (const s of series) allVals = allVals.concat(results.map(r => r[s.key]));
     const minVal = Math.min(0, ...allVals);
     const maxVal = Math.max(...allVals, 1);
     const range = maxVal - minVal;
+    const n = results.length;
 
-    const toX = (tick) => pad.left + ((tick - 1) / Math.max(results.length - 1, 1)) * chartW;
+    const toX = (i) => pad.left + (i / Math.max(n - 1, 1)) * chartW;
     const toY = (val) => pad.top + chartH - ((val - minVal) / range) * chartH;
 
     // Gridlines
@@ -388,7 +458,6 @@
       ctx.moveTo(pad.left, y);
       ctx.lineTo(pad.left + chartW, y);
       ctx.stroke();
-      // Y labels
       const val = maxVal - (range / gridLines) * i;
       ctx.fillStyle = '#666';
       ctx.font = '10px system-ui';
@@ -409,36 +478,52 @@
       ctx.setLineDash([]);
     }
 
-    // X axis labels (every ~6 ticks)
+    // X axis labels
     ctx.fillStyle = '#666';
     ctx.font = '10px system-ui';
     ctx.textAlign = 'center';
-    const tickStep = Math.max(1, Math.floor(results.length / 12));
-    for (let i = 0; i < results.length; i += tickStep) {
-      const r = results[i];
-      ctx.fillText('T' + r.tick, toX(r.tick), pad.top + chartH + 16);
+    const tickStep = Math.max(1, Math.floor(n / 12));
+    for (let i = 0; i < n; i += tickStep) {
+      ctx.fillText('T' + results[i].tick, toX(i), pad.top + chartH + 16);
     }
-    // Always label the last tick
-    const lastR = results[results.length - 1];
-    ctx.fillText('T' + lastR.tick, toX(lastR.tick), pad.top + chartH + 16);
+    ctx.fillText('T' + results[n - 1].tick, toX(n - 1), pad.top + chartH + 16);
 
-    // Draw each series
+    // Series lines
     for (const s of series) {
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 2;
-      if (s.dashed) ctx.setLineDash([5, 3]);
-      else ctx.setLineDash([]);
-
+      ctx.setLineDash(s.dashed ? [5, 3] : []);
       ctx.beginPath();
       results.forEach((r, i) => {
-        const x = toX(r.tick);
-        const y = toY(r[s.key]);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const x = toX(i), y = toY(r[s.key]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
       ctx.stroke();
     }
     ctx.setLineDash([]);
+
+    // Hover crosshair + dots
+    if (hoverIdx >= 0 && hoverIdx < n) {
+      const hx = toX(hoverIdx);
+      // Vertical line
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx, pad.top);
+      ctx.lineTo(hx, pad.top + chartH);
+      ctx.stroke();
+      // Dot per series
+      for (const s of series) {
+        const hy = toY(results[hoverIdx][s.key]);
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
 
     // Legend
     const legendY = pad.top + chartH + 30;
