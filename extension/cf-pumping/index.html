@@ -90,21 +90,58 @@
         </div>
       </div>
 
-      <!-- Buildings -->
-      <h3>Key Buildings (counts)</h3>
-      <div class="form-grid three-col">
-        <div class="form-group">
-          <label for="bldArmouries">Armouries (current)</label>
-          <input type="number" id="bldArmouries" value="0" min="0">
+      <!-- Current Buildings -->
+      <h3>Current Buildings (counts)</h3>
+      <div class="form-grid three-col" id="currentBldGrid">
+        <div class="form-group"><label>Homes</label><input type="number" id="bldHomes" value="0" min="0"></div>
+        <div class="form-group"><label>Farms</label><input type="number" id="bldFarms" value="0" min="0"></div>
+        <div class="form-group"><label>Mills</label><input type="number" id="bldMills" value="0" min="0"></div>
+        <div class="form-group"><label>Banks</label><input type="number" id="bldBanks" value="0" min="0"></div>
+        <div class="form-group"><label>Armouries</label><input type="number" id="bldArmouries" value="0" min="0"></div>
+        <div class="form-group"><label>Training Grounds</label><input type="number" id="bldTrainingGrounds" value="0" min="0"></div>
+        <div class="form-group"><label>Barracks</label><input type="number" id="bldBarracks" value="0" min="0"></div>
+        <div class="form-group"><label>Forts</label><input type="number" id="bldForts" value="0" min="0"></div>
+        <div class="form-group"><label>Castles</label><input type="number" id="bldCastles" value="0" min="0"></div>
+        <div class="form-group"><label>Hospitals</label><input type="number" id="bldHospitals" value="0" min="0"></div>
+        <div class="form-group"><label>Guilds</label><input type="number" id="bldGuilds" value="0" min="0"></div>
+        <div class="form-group"><label>Towers</label><input type="number" id="bldTowers" value="0" min="0"></div>
+        <div class="form-group"><label>Thieves' Dens</label><input type="number" id="bldThievesDens" value="0" min="0"></div>
+        <div class="form-group"><label>Watch Towers</label><input type="number" id="bldWatchTowers" value="0" min="0"></div>
+        <div class="form-group"><label>Universities</label><input type="number" id="bldUniversities" value="0" min="0"></div>
+        <div class="form-group"><label>Libraries</label><input type="number" id="bldLibraries" value="0" min="0"></div>
+        <div class="form-group"><label>Stables</label><input type="number" id="bldStables" value="0" min="0"></div>
+        <div class="form-group"><label>Dungeons</label><input type="number" id="bldDungeons" value="0" min="0"></div>
+      </div>
+
+      <!-- Final Building Config (optional) -->
+      <div style="margin-top:10px;margin-bottom:4px;display:flex;align-items:center;gap:10px">
+        <label class="checkbox-item">
+          <input type="checkbox" id="enableFinalBld"> Final Building Config at CF Exit
+        </label>
+        <span style="font-size:11px;color:#6a8caf">(raze + build after training)</span>
+      </div>
+      <div id="finalBldSection" style="display:none">
+        <div class="form-grid three-col" id="finalBldGrid">
+          <div class="form-group"><label>Homes</label><input type="number" id="fbldHomes" value="0" min="0"></div>
+          <div class="form-group"><label>Farms</label><input type="number" id="fbldFarms" value="0" min="0"></div>
+          <div class="form-group"><label>Mills</label><input type="number" id="fbldMills" value="0" min="0"></div>
+          <div class="form-group"><label>Banks</label><input type="number" id="fbldBanks" value="0" min="0"></div>
+          <div class="form-group"><label>Armouries</label><input type="number" id="fbldArmouries" value="0" min="0"></div>
+          <div class="form-group"><label>Training Grounds</label><input type="number" id="fbldTrainingGrounds" value="0" min="0"></div>
+          <div class="form-group"><label>Barracks</label><input type="number" id="fbldBarracks" value="0" min="0"></div>
+          <div class="form-group"><label>Forts</label><input type="number" id="fbldForts" value="0" min="0"></div>
+          <div class="form-group"><label>Castles</label><input type="number" id="fbldCastles" value="0" min="0"></div>
+          <div class="form-group"><label>Hospitals</label><input type="number" id="fbldHospitals" value="0" min="0"></div>
+          <div class="form-group"><label>Guilds</label><input type="number" id="fbldGuilds" value="0" min="0"></div>
+          <div class="form-group"><label>Towers</label><input type="number" id="fbldTowers" value="0" min="0"></div>
+          <div class="form-group"><label>Thieves' Dens</label><input type="number" id="fbldThievesDens" value="0" min="0"></div>
+          <div class="form-group"><label>Watch Towers</label><input type="number" id="fbldWatchTowers" value="0" min="0"></div>
+          <div class="form-group"><label>Universities</label><input type="number" id="fbldUniversities" value="0" min="0"></div>
+          <div class="form-group"><label>Libraries</label><input type="number" id="fbldLibraries" value="0" min="0"></div>
+          <div class="form-group"><label>Stables</label><input type="number" id="fbldStables" value="0" min="0"></div>
+          <div class="form-group"><label>Dungeons</label><input type="number" id="fbldDungeons" value="0" min="0"></div>
         </div>
-        <div class="form-group">
-          <label for="bldTrainingGrounds">Training Grounds</label>
-          <input type="number" id="bldTrainingGrounds" value="0" min="0">
-        </div>
-        <div class="form-group">
-          <label for="bldMills">Mills</label>
-          <input type="number" id="bldMills" value="0" min="0">
-        </div>
+        <div id="finalBldInfo" style="font-size:11px;color:#888;margin-top:6px;background:#0f3460;border-radius:4px;padding:6px 10px"></div>
       </div>
 
       <!-- Sciences -->

@@ -89,11 +89,18 @@
       fill('elites', d.elites || 0);
       fill('thieves', d.thieves || 0);
 
-      // Buildings
+      // Buildings — populate all
       const bld = d.buildings || {};
-      fill('bldArmouries', bld.armouries || 0);
-      fill('bldTrainingGrounds', bld.trainingGrounds || 0);
-      fill('bldMills', bld.mills || 0);
+      const bldMap = {
+        homes:'bldHomes', farms:'bldFarms', mills:'bldMills', banks:'bldBanks',
+        armouries:'bldArmouries', trainingGrounds:'bldTrainingGrounds',
+        barracks:'bldBarracks', forts:'bldForts', castles:'bldCastles',
+        hospitals:'bldHospitals', guilds:'bldGuilds', towers:'bldTowers',
+        thievesDens:'bldThievesDens', watchTowers:'bldWatchTowers',
+        universities:'bldUniversities', libraries:'bldLibraries',
+        stables:'bldStables', dungeons:'bldDungeons'
+      };
+      for (const [key, id] of Object.entries(bldMap)) fill(id, bld[key] || 0);
 
       // Save full buildings for accurate maxPop in draft calculation
       _importedBuildings = Object.fromEntries(
@@ -220,9 +227,37 @@
     const ritualEff = num('ritualEff', 100) / 100;
 
     const acres = num('acres');
-    const armouries = num('bldArmouries');
-    const trainingGrounds = num('bldTrainingGrounds');
-    const mills = num('bldMills');
+
+    // All current buildings
+    const BLD_KEYS = ['homes','farms','mills','banks','armouries','trainingGrounds',
+      'barracks','forts','castles','hospitals','guilds','towers','thievesDens',
+      'watchTowers','universities','libraries','stables','dungeons'];
+    const BLD_IDS  = ['bldHomes','bldFarms','bldMills','bldBanks','bldArmouries',
+      'bldTrainingGrounds','bldBarracks','bldForts','bldCastles','bldHospitals',
+      'bldGuilds','bldTowers','bldThievesDens','bldWatchTowers','bldUniversities',
+      'bldLibraries','bldStables','bldDungeons'];
+    const currentBuildings = {};
+    BLD_KEYS.forEach((k, i) => { currentBuildings[k] = num(BLD_IDS[i]); });
+    // barrenLand is derived
+    const totalBuilt = BLD_KEYS.reduce((s, k) => s + (currentBuildings[k] || 0), 0);
+    currentBuildings.barrenLand = Math.max(0, acres - totalBuilt);
+
+    const armouries       = currentBuildings.armouries;
+    const trainingGrounds = currentBuildings.trainingGrounds;
+    const mills           = currentBuildings.mills;
+
+    // Final building config (optional)
+    const enableFinalBld = document.getElementById('enableFinalBld').checked;
+    const FBD_IDS = ['fbldHomes','fbldFarms','fbldMills','fbldBanks','fbldArmouries',
+      'fbldTrainingGrounds','fbldBarracks','fbldForts','fbldCastles','fbldHospitals',
+      'fbldGuilds','fbldTowers','fbldThievesDens','fbldWatchTowers','fbldUniversities',
+      'fbldLibraries','fbldStables','fbldDungeons'];
+    const finalBuildings = {};
+    if (enableFinalBld) {
+      BLD_KEYS.forEach((k, i) => { finalBuildings[k] = num(FBD_IDS[i]); });
+      const totalFinal = BLD_KEYS.reduce((s, k) => s + (finalBuildings[k] || 0), 0);
+      finalBuildings.barrenLand = Math.max(0, acres - totalFinal);
+    }
 
     // Compute target armouries count from target %
     const targetArmPct = num('targetArmPct');
@@ -251,6 +286,10 @@
       targetArmPct,
       targetArmCount,
       newArmouries,
+
+      currentBuildings,
+      finalBuildings: enableFinalBld ? finalBuildings : null,
+      enableFinalBld,
 
       gold: num('gold'),
       income: num('income'),         // gross income/tick (from engine, no wages)
@@ -612,6 +651,77 @@
     return { soldiersNeeded, draftedPerTick, draftTicks, totalDraftCost, maxPop, targetMilPop, costPerSoldier };
   }
 
+  // Toggle final building section visibility
+  document.getElementById('enableFinalBld').addEventListener('change', function () {
+    document.getElementById('finalBldSection').style.display = this.checked ? '' : 'none';
+    recalc();
+  });
+
+// ===========================================================================
+// PART 2b — FINAL BUILD PHASE CALCULATION
+// ===========================================================================
+
+  /**
+   * Calculates what needs to be built/razed to reach the final building config.
+   * Raze is instant (1 tick, costs gold).
+   * Build takes constructionTicks (same formula as armouries).
+   * Returns { toBuild, toRaze, buildCount, razeCount, buildCost, razeCost,
+   *           constructionTicks, totalCost, summary }
+   */
+  function calcFinalBuildPhase(s) {
+    if (!s.finalBuildings) return null;
+
+    const BLD_KEYS = ['homes','farms','mills','banks','armouries','trainingGrounds',
+      'barracks','forts','castles','hospitals','guilds','towers','thievesDens',
+      'watchTowers','universities','libraries','stables','dungeons'];
+
+    // Use intermediate buildings as the baseline:
+    // after the armouries build phase, we have current buildings + new armouries
+    const intermediate = Object.assign({}, s.currentBuildings,
+      { armouries: Math.max(s.armouries, s.targetArmCount) });
+
+    const toBuild = {};  // key → count to build
+    const toRaze  = {};  // key → count to raze
+
+    for (const key of BLD_KEYS) {
+      const cur   = intermediate[key] || 0;
+      const final = s.finalBuildings[key] || 0;
+      const delta = final - cur;
+      if (delta > 0) toBuild[key] = delta;
+      if (delta < 0) toRaze[key]  = Math.abs(delta);
+    }
+
+    const buildCount = Object.values(toBuild).reduce((a, v) => a + v, 0);
+    const razeCount  = Object.values(toRaze).reduce((a, v) => a + v, 0);
+
+    const costPerBldg = calcConstructionCostPerBldg(s);
+    const buildCost   = buildCount * costPerBldg;
+
+    // Raze cost per building: Engine.calcRazeCost
+    const razeCostPerBldg = Engine.calcRazeCost({
+      race: s.race, personality: s.personality, acres: s.acres, sciArtisan: s.sciArtisan
+    }).razeCost;
+    const razeCost = razeCount * razeCostPerBldg;
+
+    // Construction time for the new buildings (same formula as armouries)
+    const ticks = buildCount > 0 ? calcConstructionTicks(s) : 1; // 1 tick for raze-only
+
+    // Summary string for UI
+    const parts = [];
+    for (const [k, v] of Object.entries(toBuild))
+      parts.push(`+${v} ${GAME_DATA.buildings[k]?.name || k}`);
+    for (const [k, v] of Object.entries(toRaze))
+      parts.push(`−${v} ${GAME_DATA.buildings[k]?.name || k}`);
+
+    return {
+      toBuild, toRaze, buildCount, razeCount,
+      buildCost, razeCost, razeCostPerBldg, costPerBldg,
+      constructionTicks: ticks,
+      totalCost: buildCost + razeCost,
+      summary: parts.join(', ') || 'No changes'
+    };
+  }
+
 // ===========================================================================
 // PART 3 — calcPlan() — ASSEMBLE TIMELINE
 // ===========================================================================
@@ -662,16 +772,24 @@
     const constructionTicks = s.newArmouries > 0 ? calcConstructionTicks(s) : 0;
     const trainingTicks     = (s.tgtElites > 0 || s.tgtOffSpecs > 0 || s.tgtDefSpecs > 0 || s.tgtThieves > 0)
                                 ? calcTrainingTicks(s) : 0;
-    const wageTicks         = 48; // always plan 48 ticks for wage raise
+    const wageTicks         = 48;
     const draftPlan         = calcDraftPlan(s);
     const draftTicks        = draftPlan.draftTicks;
 
-    // ── Retroplanning from T_exit ──
-    // Phase 5: Train (ends at exit)
-    const p5End   = cfEndTick;
-    const p5Start = cfEndTick - trainingTicks;
+    // ── Final build phase (optional) ──
+    const finalBuildPhase   = calcFinalBuildPhase(s);
+    const finalBuildTicks   = finalBuildPhase ? finalBuildPhase.constructionTicks : 0;
 
-    // Phase 4: Wages to 200% (48 ticks before exit, may overlap training)
+    // ── Retroplanning from T_exit ──
+    // Phase 6: Final build/raze (ends at CF exit)
+    const p6End   = cfEndTick;
+    const p6Start = cfEndTick - finalBuildTicks;
+
+    // Phase 5: Train (ends when final build starts, or at exit if no final build)
+    const p5End   = finalBuildTicks > 0 ? p6Start : cfEndTick;
+    const p5Start = p5End - trainingTicks;
+
+    // Phase 4: Wages to 200% (48 ticks before exit)
     const p4End   = cfEndTick;
     const p4Start = cfEndTick - wageTicks;
 
@@ -699,7 +817,7 @@
     }
 
     // Check if there's enough time
-    const ticksNeeded = constructionTicks + draftTicks + trainingTicks;
+    const ticksNeeded = constructionTicks + draftTicks + trainingTicks + finalBuildTicks;
     const hasEnoughTime = p2Start >= nowTick;
     if (!hasEnoughTime) {
       warnings.push(`Not enough time! Need ${ticksNeeded} ticks but only ${ticksTotal} remain.`);
@@ -755,10 +873,11 @@
         ? (armCount - s.armouries) * calcConstructionCostPerBldg(s)
         : 0;
 
-      const draftCost = draftPlan.totalDraftCost;
-      const trainTotal = ec + oc + dc + tc;
-      const total = trainTotal + bldCost + draftCost;
-      const gap = total - goldAccumulated;
+      const draftCost      = draftPlan.totalDraftCost;
+      const finalBldCost   = finalBuildPhase ? finalBuildPhase.totalCost : 0;
+      const trainTotal     = ec + oc + dc + tc;
+      const total          = trainTotal + bldCost + draftCost + finalBldCost;
+      const gap            = total - goldAccumulated;
 
       return { ec, oc, dc, tc, bldCost, draftCost, trainTotal, total, gap };
     }
@@ -862,6 +981,15 @@
       details: `Set wages to 200% at tick ${p4Start - nowTick} (${wageTicks} ticks before exit)`
     });
 
+    // Final build phase (raze + build)
+    if (finalBuildPhase && finalBuildTicks > 0) {
+      phases.push({
+        id: 'finalbuild', label: 'Final Build / Raze', color: '#16a085',
+        startTick: p6Start, durationTicks: finalBuildTicks, endTick: p6End,
+        details: finalBuildPhase.summary + ` | ${finalBuildTicks} ticks | cost: ${fmtGc(finalBuildPhase.totalCost)}`
+      });
+    }
+
     // CF Exit marker
     phases.push({
       id: 'exit', label: 'CF Exit', color: '#e74c3c',
@@ -869,10 +997,23 @@
       details: 'Ceasefire ends — attack!'
     });
 
+    // Update finalBldInfo display
+    if (finalBuildPhase) {
+      const infoEl = document.getElementById('finalBldInfo');
+      if (infoEl) {
+        infoEl.innerHTML =
+          `Changes: ${finalBuildPhase.summary}<br>` +
+          `Build: ${finalBuildPhase.buildCount} × ${fmtGc(finalBuildPhase.costPerBldg)} = ${fmtGc(finalBuildPhase.buildCost)} | ` +
+          `Raze: ${finalBuildPhase.razeCount} × ${fmtGc(finalBuildPhase.razeCostPerBldg)} = ${fmtGc(finalBuildPhase.razeCost)} | ` +
+          `Duration: ${finalBuildTicks} ticks`;
+      }
+    }
+
     return {
       s, cfEndTick, nowTick, ticksTotal,
       phases,
       constructionTicks, trainingTicks, wageTicks, draftTicks,
+      finalBuildTicks, finalBuildPhase,
       draftPlan,
       ticksNeeded,
       hasEnoughTime,
@@ -884,7 +1025,7 @@
       netIncomePerTick,
       baseRealDate,
       baseAbsTick: nowTick,
-      p1Ticks, p2Start, p3Start, p4Start, p5Start,
+      p1Ticks, p2Start, p3Start, p4Start, p5Start, p6Start,
     };
   }
 
@@ -1325,6 +1466,15 @@
       });
     }
 
+    if (plan.finalBuildTicks > 0 && plan.finalBuildPhase) {
+      steps.push({
+        num: steps.length + 1, task: 'Final Build / Raze',
+        action: plan.finalBuildPhase.summary,
+        startTick: plan.p6Start,
+        cost: plan.finalBuildPhase.totalCost
+      });
+    }
+
     steps.push({
       num: steps.length + 1, task: 'CF Exit — Attack!',
       action: `Ceasefire ends`,
@@ -1354,6 +1504,7 @@
     const mil = s.race.military;
     const tbody = document.getElementById('costBody');
 
+    const fbCost = plan.finalBuildPhase ? plan.finalBuildPhase.totalCost : 0;
     const rows = [
       { label: mil.elites.name,      z: costs.zero.ec,    c: costs.current.ec,    t: costs.target.ec },
       { label: mil.offSpec.name,     z: costs.zero.oc,    c: costs.current.oc,    t: costs.target.oc },
@@ -1361,6 +1512,7 @@
       { label: 'Thieves',            z: costs.zero.tc,    c: costs.current.tc,    t: costs.target.tc },
       { label: 'Build Armouries',    z: 0,                c: 0,                   t: costs.target.bldCost },
       { label: 'Draft Cost',         z: costs.zero.draftCost, c: costs.current.draftCost, t: costs.target.draftCost },
+      { label: 'Final Build/Raze',   z: fbCost,           c: fbCost,              t: fbCost },
     ];
 
     const zTotal = rows.reduce((a, r) => a + r.z, 0);
@@ -1558,10 +1710,11 @@
 
   // Phase colors (match Gantt)
   const PHASE_COLORS = {
-    gold:  '#27ae60',
-    build: '#2980b9',
-    draft: '#e67e22',
-    train: '#8e44ad',
+    gold:       '#27ae60',
+    build:      '#2980b9',
+    draft:      '#e67e22',
+    train:      '#8e44ad',
+    finalbuild: '#16a085',
   };
 
   function renderEvolutionChart(plan, simData) {
@@ -1589,12 +1742,11 @@
     const xScale = chartW / (N - 1);
 
     const goldVals  = simData.map(d => d.gold);
-    const milVals   = simData.map(d => d.totalMilitary);
     const solVals   = simData.map(d => d.soldiers);
     const goldMin   = Math.min(...goldVals);
     const goldMax   = Math.max(...goldVals);
     const milMin    = 0;
-    const milMax    = Math.max(...milVals, ...solVals) * 1.05 || 1;
+    const milMax    = Math.max(...solVals) * 1.05 || 1;
 
     // Y scales
     const goldRange = goldMax - goldMin || 1;
@@ -1630,27 +1782,15 @@
       ctx.stroke();
     }
 
-    // ── Total military line (right axis, blue) ──
-    ctx.beginPath();
-    ctx.strokeStyle = '#5da0e8';
-    ctx.lineWidth = 1.5;
-    simData.forEach((d, i) => {
-      const x = xPos(i), y = yMil(d.totalMilitary);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // ── Soldiers line (right axis, orange dashed) ──
+    // ── Soldiers line (right axis, orange) ──
     ctx.beginPath();
     ctx.strokeStyle = '#e67e22';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 2;
     simData.forEach((d, i) => {
       const x = xPos(i), y = yMil(d.soldiers);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
-    ctx.setLineDash([]);
 
     // ── Red fill where gold < 0 ──
     const zeroY = yGold(0);
@@ -1729,8 +1869,8 @@
       ctx.fillText(fmtK(v), PAD_L - 4, PAD_T + (g / 4) * chartH + 3);
     }
 
-    // Right axis (military)
-    ctx.fillStyle = '#5da0e8';
+    // Right axis (soldiers)
+    ctx.fillStyle = '#e67e22';
     ctx.textAlign = 'left';
     for (let g = 0; g <= 4; g++) {
       const v = milMax * (4 - g) / 4;
@@ -1754,18 +1894,17 @@
     ctx.fillText('Gold', 0, 0);
     ctx.restore();
 
-    ctx.fillStyle = '#5da0e8';
+    ctx.fillStyle = '#e67e22';
     ctx.save();
     ctx.translate(cW - 10, PAD_T + chartH / 2);
     ctx.rotate(Math.PI / 2);
-    ctx.fillText('Military', 0, 0);
+    ctx.fillText('Soldiers', 0, 0);
     ctx.restore();
 
     // Legend
     const legendItems = [
       { color: '#c4a35a', label: 'Gold', dash: false },
-      { color: '#5da0e8', label: 'Total Military', dash: false },
-      { color: '#e67e22', label: 'Soldiers', dash: true },
+      { color: '#e67e22', label: 'Soldiers', dash: false },
     ];
     let lx = PAD_L + 8;
     legendItems.forEach(item => {
@@ -1811,7 +1950,6 @@
     let html = `<strong>Tick +${d.t}</strong> — ${phaseLabel[d.phase] || d.phase}<br>`;
     html += `UT: ${fmtTick(absTick, _plan)}<br>`;
     html += `<span style="color:#c4a35a">Gold: ${fmtGc(d.gold)}</span><br>`;
-    html += `<span style="color:#5da0e8">Total Military: ${fmtNum(d.totalMilitary)}</span><br>`;
     html += `<span style="color:#e67e22">Soldiers: ${fmtNum(d.soldiers)}</span>`;
 
     evoTooltip.innerHTML = html;
