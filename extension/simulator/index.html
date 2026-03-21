@@ -22,10 +22,6 @@
 
       <div class="form-grid">
         <div class="form-group">
-          <label for="simTicks">Ticks to Simulate</label>
-          <input type="number" id="simTicks" value="24" min="1" max="200">
-        </div>
-        <div class="form-group">
           <label for="draftRate">Draft Rate</label>
           <select id="draftRate">
             <option value="none">None (0%)</option>
@@ -36,8 +32,12 @@
           </select>
         </div>
         <div class="form-group">
-          <label>&nbsp;</label>
+          <label for="milTarget">Target Army % of Max Pop <span class="field-hint">e.g. 85</span></label>
+          <input type="number" id="milTarget" value="85" min="1" max="99" step="1">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
           <button id="runBtn" type="button" class="run-btn">Run Simulation</button>
+          <span id="simSummary" style="font-size:12px;color:#4ecdc4;margin-top:6px;display:block"></span>
         </div>
       </div>
 
@@ -96,6 +96,8 @@
         <canvas id="chartEconomy" width="700" height="220"></canvas>
         <h3>Population &amp; Army</h3>
         <canvas id="chartPopulation" width="700" height="220"></canvas>
+        <h3>Army % of Max Pop</h3>
+        <canvas id="chartMilPct" width="700" height="180"></canvas>
         <h3>Food &amp; Runes</h3>
         <canvas id="chartResources" width="700" height="220"></canvas>
       </div>
@@ -107,6 +109,7 @@
             <thead>
               <tr>
                 <th>Tick</th>
+                <th>Mil%</th>
                 <th>Gold</th>
                 <th>Net Gold</th>
                 <th>Peasants</th>

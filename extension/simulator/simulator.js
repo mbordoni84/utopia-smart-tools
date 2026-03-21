@@ -14,6 +14,7 @@
   // The engine state object — built from imported game data or manual inputs
   let _engineState = null;
   let _simResults = null;
+  let _milTargetPct = 0.85;
 
   // ---------------------------------------------------------------------------
   // IMPORT FROM GAME
@@ -179,16 +180,20 @@
     const startState = buildStartState();
     if (!startState) return;
 
-    const numTicks = parseInt(document.getElementById('simTicks').value) || 24;
     const draftRate = document.getElementById('draftRate').value;
+    const milTargetPct = (parseFloat(document.getElementById('milTarget').value) || 85) / 100;
+    const MAX_TICKS = 300; // safety cap
 
     const results = [];
     const state = deepClone(startState);
     state.draftRate = draftRate;
     state.eowcfTicksElapsed = 0;
 
-    for (let tick = 1; tick <= numTicks; tick++) {
-      // Compute max pop for draft level factor (needs to be in state before calcDraft)
+    // Calculate initial military count (soldiers + specs + elites + thieves)
+    const initialMilitary = (state.soldiers || 0) + (state.offSpecs || 0)
+      + (state.defSpecs || 0) + (state.elites || 0) + (state.thieves || 0);
+
+    for (let tick = 1; tick <= MAX_TICKS; tick++) {
       const pop = Engine.calcPopGrowth(state);
       state.maxPop = pop.maxPop;
 
@@ -199,10 +204,15 @@
       const draft = Engine.calcDraft(state);
 
       const netGold = income.modifiedIncome - wages.modifiedWages - draft.draftCost;
+      // Total military = current soldiers (which grows by draft each tick) + fixed specs/elites/thieves
+      const totalMilitary = state.soldiers + (state.offSpecs || 0)
+        + (state.defSpecs || 0) + (state.elites || 0) + (state.thieves || 0);
+      const milPct = state.maxPop > 0 ? totalMilitary / state.maxPop : 0;
 
       results.push({
         tick,
-        gold: Math.round(state.gold + netGold), // gold at END of tick (after income/wages/draft)
+        milPct,
+        gold: Math.round(state.gold + netGold),
         netGold: Math.round(netGold),
         peasants: Math.round(state.peasants),
         soldiers: Math.round(state.soldiers),
@@ -217,18 +227,39 @@
         netRunes: Math.round(runes.netRunes),
       });
 
-      // Advance state to next tick
+      // Advance state
       state.gold += netGold;
       state.peasants = Math.max(0, state.peasants + pop.netPeasantChange - draft.drafted);
       state.soldiers += draft.drafted;
       state.food = Math.max(0, state.food + food.netFood);
       state.runes = Math.max(0, state.runes + runes.netRunes);
-
-      // Update eowcf ticks elapsed if active
       if (state.eowcfActive) state.eowcfTicksElapsed++;
+
+      // Stop when target military % is reached
+      if (milPct >= milTargetPct) break;
+
+      // Also stop if no drafting (would never converge)
+      if (draftRate === 'none') break;
+    }
+
+    // Summary message
+    const lastResult = results[results.length - 1];
+    const reached = lastResult.milPct >= milTargetPct;
+    const summaryEl = document.getElementById('simSummary');
+    const fmtPct = p => (p * 100).toFixed(1) + '%';
+    if (reached) {
+      summaryEl.style.color = '#4ecdc4';
+      summaryEl.textContent = `✓ Reaches ${fmtPct(milTargetPct)} in ${lastResult.tick} tick${lastResult.tick !== 1 ? 's' : ''}`;
+    } else if (draftRate === 'none') {
+      summaryEl.style.color = '#e74c3c';
+      summaryEl.textContent = `Draft rate is None — no soldiers will be drafted`;
+    } else {
+      summaryEl.style.color = '#e74c3c';
+      summaryEl.textContent = `⚠ Target not reached within ${MAX_TICKS} ticks (capped at ${fmtPct(lastResult.milPct)})`;
     }
 
     _simResults = results;
+    _milTargetPct = milTargetPct;
     renderResults(results);
   }
 
@@ -311,6 +342,7 @@
       const netRunesClass = r.netRunes >= 0 ? 'net-positive' : 'net-negative';
       return `<tr>
         <td>${r.tick}</td>
+        <td>${(r.milPct * 100).toFixed(1)}%</td>
         <td>${fmtNum(r.gold)}</td>
         <td class="${netGoldClass}">${fmtNum(r.netGold)}</td>
         <td>${fmtNum(r.peasants)}</td>
@@ -359,6 +391,8 @@
       { key: 'soldiers', label: 'Soldiers', color: '#e07040' },
       { key: 'drafted', label: 'Drafted/tick', color: '#f8c84a', dashed: true },
     ]);
+
+    renderMilPctChart('chartMilPct', results, _milTargetPct);
 
     renderLineChart('chartResources', results, [
       { key: 'food', label: 'Food', color: '#5da55d' },
@@ -537,6 +571,132 @@
       ctx.fillText(s.label, legendX + 20, legendY);
       legendX += ctx.measureText(s.label).width + 40;
     }
+  }
+
+  // Dedicated military % chart with target line
+  function renderMilPctChart(canvasId, results, targetPct) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const W = canvas.offsetWidth || 700;
+    const H = canvas.height;
+    canvas.width = W;
+
+    _chartStore[canvasId] = { results, series: [{ key: 'milPct', label: 'Army %', color: '#e07040' }], W, H, targetPct };
+
+    if (!canvas._hoverReady) {
+      canvas._hoverReady = true;
+      canvas.style.cursor = 'crosshair';
+      canvas.addEventListener('mousemove', (e) => {
+        const store = _chartStore[canvasId];
+        if (!store) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const pad = { top: 20, right: 20, bottom: 40, left: 60 };
+        const chartW = store.W - pad.left - pad.right;
+        const n = store.results.length;
+        let bestIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < n; i++) {
+          const x = pad.left + (i / Math.max(n - 1, 1)) * chartW;
+          const dist = Math.abs(mouseX - x);
+          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+        drawMilPctChart(canvas, store.results, store.W, store.H, store.targetPct, bestIdx);
+        // Show tooltip
+        const row = store.results[bestIdx];
+        _tooltip.innerHTML = `
+          <div style="color:#c4a35a;font-weight:600;margin-bottom:6px">Tick ${row.tick}</div>
+          <div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">
+            <span style="color:#e07040">Army % of Max Pop</span>
+            <span>${(row.milPct * 100).toFixed(1)}%</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">
+            <span style="color:#f8c84a">Target</span>
+            <span>${(store.targetPct * 100).toFixed(1)}%</span>
+          </div>`;
+        _tooltip.style.display = 'block';
+        const tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
+        let tx = e.clientX + 14, ty = e.clientY - 10;
+        if (tx + tw > window.innerWidth - 8) tx = e.clientX - tw - 14;
+        if (ty + th > window.innerHeight - 8) ty = window.innerHeight - th - 8;
+        _tooltip.style.left = tx + 'px';
+        _tooltip.style.top = ty + 'px';
+      });
+      canvas.addEventListener('mouseleave', () => {
+        const store = _chartStore[canvasId];
+        if (store) drawMilPctChart(canvas, store.results, store.W, store.H, store.targetPct, -1);
+        _tooltip.style.display = 'none';
+      });
+    }
+
+    drawMilPctChart(canvas, results, W, H, targetPct, -1);
+  }
+
+  function drawMilPctChart(canvas, results, W, H, targetPct, hoverIdx) {
+    const ctx = canvas.getContext('2d');
+    const pad = { top: 20, right: 20, bottom: 40, left: 60 };
+    const chartW = W - pad.left - pad.right;
+    const chartH = H - pad.top - pad.bottom;
+    const n = results.length;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const minVal = 0;
+    const maxVal = Math.max(targetPct * 1.05, ...results.map(r => r.milPct), 0.01);
+    const range = maxVal - minVal;
+    const toX = (i) => pad.left + (i / Math.max(n - 1, 1)) * chartW;
+    const toY = (v) => pad.top + chartH - ((v - minVal) / range) * chartH;
+
+    // Gridlines + Y labels (as %)
+    ctx.strokeStyle = '#2a2a4a';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + (chartH / 5) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
+      const val = maxVal - (range / 5) * i;
+      ctx.fillStyle = '#666'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText((val * 100).toFixed(0) + '%', pad.left - 6, y + 4);
+    }
+
+    // Target line
+    const ty = toY(targetPct);
+    ctx.strokeStyle = '#4ecdc4';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(pad.left, ty); ctx.lineTo(pad.left + chartW, ty); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4ecdc4'; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Target ' + (targetPct * 100).toFixed(0) + '%', pad.left + 4, ty - 4);
+
+    // X axis labels
+    ctx.fillStyle = '#666'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    const tickStep = Math.max(1, Math.floor(n / 12));
+    for (let i = 0; i < n; i += tickStep) ctx.fillText('T' + results[i].tick, toX(i), pad.top + chartH + 16);
+    ctx.fillText('T' + results[n - 1].tick, toX(n - 1), pad.top + chartH + 16);
+
+    // Mil% line
+    ctx.strokeStyle = '#e07040'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    results.forEach((r, i) => {
+      const x = toX(i), y = toY(r.milPct);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Hover crosshair + dot
+    if (hoverIdx >= 0 && hoverIdx < n) {
+      const hx = toX(hoverIdx);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, pad.top + chartH); ctx.stroke();
+      const hy = toY(results[hoverIdx].milPct);
+      ctx.fillStyle = '#e07040';
+      ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // Legend
+    ctx.fillStyle = '#e07040'; ctx.fillRect(pad.left, pad.top + chartH + 22, 16, 3);
+    ctx.fillStyle = '#aaa'; ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Army % of Max Pop', pad.left + 20, pad.top + chartH + 30);
   }
 
   function fmtK(n) {
