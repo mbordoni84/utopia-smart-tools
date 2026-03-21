@@ -375,99 +375,6 @@
   }
 
   // ---------------------------------------------------------------------------
-  // COMPARISON PAIRS GENERATOR
-  // ---------------------------------------------------------------------------
-  // Builds an array of { label, game, engine, delta, pctDiff } objects by
-  // comparing scraped game values against engine calculations.
-  // "Yesterday" on the State page = 1 tick, so engine per-tick values compare
-  // directly without multiplication.
-  // ---------------------------------------------------------------------------
-  function buildComparisons(scraped, income, wages, food, runes, pop, buildTime, buildCost, razeCost) {
-    const pairs = [];
-    if (!scraped) return pairs;
-
-    function add(label, gameVal, engineVal) {
-      if (gameVal == null || engineVal == null) return;
-      const g = Math.round(gameVal);
-      const e = Math.round(engineVal);
-      const delta = e - g;
-      const pctDiff = g !== 0 ? ((delta / g) * 100).toFixed(2) + '%' : (delta === 0 ? '0%' : 'N/A');
-      pairs.push({ label, game: g, engine: e, delta, pctDiff });
-    }
-
-    // --- Direct stats comparisons ---
-    add('Max Population', scraped.maxPop, pop.maxPop);
-
-    // --- Current projected values (from State page stats table) ---
-    // dailyIncome/dailyWages reflect the game's current state more accurately
-    // than "yesterday" history, which may have had different unit counts/spells.
-    add('Income (projected)', scraped.dailyIncome, income.modifiedIncome);
-    add('Wages (projected)', scraped.dailyWages, wages.modifiedWages);
-    if (scraped.dailyIncome != null && scraped.dailyWages != null) {
-      add('Net Gold (projected)', scraped.dailyIncome - scraped.dailyWages,
-        income.modifiedIncome - wages.modifiedWages);
-    }
-
-    // --- Historical table comparisons (yesterday = last completed tick) ---
-    // Note: "yesterday" values reflect a past game state — unit counts, spells,
-    // and gradual modifiers (BE, effective wage rate) may have been different.
-    const h = scraped.stateHistory;
-    if (h) {
-      add('Income (yesterday)', h.income && h.income.yesterday, income.modifiedIncome);
-      add('Wages (yesterday)', h.wages && h.wages.yesterday, wages.modifiedWages);
-      add('Food Produced per tick', h.foodGrown && h.foodGrown.yesterday,
-        food.modifiedFoodProduction);
-      add('Food Consumed per tick', h.foodNeeded && h.foodNeeded.yesterday,
-        food.foodConsumed);
-      add('Food Decayed per tick', h.foodDecayed && h.foodDecayed.yesterday,
-        food.foodDecay);
-      add('Net Food per tick', h.netFoodChange && h.netFoodChange.yesterday,
-        food.netFood);
-      add('Runes Produced per tick', h.runesProduced && h.runesProduced.yesterday,
-        runes.modifiedRuneProduction);
-      add('Runes Decayed per tick', h.runesDecayed && h.runesDecayed.yesterday,
-        runes.runeDecay);
-      add('Net Runes per tick', h.netRuneChange && h.netRuneChange.yesterday,
-        runes.netRunes);
-      // Peasant Change not compared: game value is net (births - drafts - deaths),
-      // engine calculates births only. Not comparable when drafting occurs.
-    }
-
-    // --- Building Efficiency (from buildings page or throne) ---
-    // Game's displayed BE does NOT include CD or Blizzard malus, so exclude them for comparison
-    if (scraped.buildingEfficiencyPct != null) {
-      const beForComparison = income.beResult.be
-        / (income.beResult.constructionDelaysMod || 1)
-        / (income.beResult.blizzardMod || 1);
-      add('Building Efficiency %', scraped.buildingEfficiencyPct,
-        beForComparison * 100);
-    }
-    // --- BE intermediate values (from buildings page) ---
-    if (scraped.availableWorkers != null) {
-      add('Available Workers', scraped.availableWorkers, income.beResult.availableWorkers);
-    }
-    if (scraped.availableJobs != null) {
-      add('Available Jobs', scraped.availableJobs, income.beResult.totalJobs);
-    }
-    if (scraped.workersNeededForMax != null) {
-      add('Workers Needed for Max BE', scraped.workersNeededForMax, income.beResult.optimalWorkers);
-    }
-
-    // --- Construction (from build page) ---
-    if (scraped.constructionTime != null && buildTime) {
-      add('Construction Time', scraped.constructionTime, buildTime.constructionTime);
-    }
-    if (scraped.constructionCost != null && buildCost) {
-      add('Construction Cost', scraped.constructionCost, buildCost.constructionCost);
-    }
-    if (scraped.razeCost != null && razeCost) {
-      add('Raze Cost', scraped.razeCost, razeCost.razeCost);
-    }
-
-    return pairs;
-  }
-
-  // ---------------------------------------------------------------------------
   // GATHER STATE FROM DOM
   // ---------------------------------------------------------------------------
   function calcEowcfTicksElapsed() {
@@ -781,42 +688,8 @@
       ['Raze Cost', fmt(razeCost.razeCost) + ' gc/acre']
     ].filter(Boolean));
 
-    // Store last debug snapshot
-    const scraped = window._scrapedGameData || null;
-    window._debugData = {
-      scraped: scraped,
-      state: {
-        race: state.race.name,
-        personality: state.personality.name,
-        acres: state.acres,
-        buildings: state.buildings,
-        inConstruction: window._inConstruction || {},
-        inTraining: state.inTraining || {},
-        peasants: state.peasants, soldiers: state.soldiers,
-        offSpecs: state.offSpecs, defSpecs: state.defSpecs,
-        elites: state.elites, thieves: state.thieves,
-        wizards: state.wizards, prisoners: state.prisoners,
-        gold: state.gold, food: state.food, runes: state.runes,
-        sciAlchemy: state.sciAlchemy, sciTools: state.sciTools,
-        sciProduction: state.sciProduction, sciHousing: state.sciHousing,
-        sciBookkeeping: state.sciBookkeeping, sciHeroism: state.sciHeroism,
-        sciValor: state.sciValor, sciArtisan: state.sciArtisan,
-        spellFertileLands: state.spellFertileLands, spellMinersM: state.spellMinersM,
-        spellChastity: state.spellChastity, spellBuildBoon: state.spellBuildBoon,
-        spellLoveAndPeace: state.spellLoveAndPeace, spellInspireArmy: state.spellInspireArmy,
-        spellHerosInspiration: state.spellHerosInspiration, spellGhostWorkers: state.spellGhostWorkers,
-        spellDrought: state.spellDrought, spellGluttony: state.spellGluttony,
-        spellGreed: state.spellGreed, spellBlizzard: state.spellBlizzard,
-        spellRiots: state.spellRiots, spellConstructionDelays: state.spellConstructionDelays,
-        ritual: state.ritual, ritualEffectiveness: state.ritualEffectiveness,
-        dragon: state.dragon, wageRate: state.wageRate,
-        honor: state.honor,
-        raceMods: state.race.mods,
-        persMods: state.personality.mods
-      },
-      calculated: { income, wages, food, runes, netIncome, pop, buildTime, buildCost, razeCost },
-      comparisons: buildComparisons(scraped, income, wages, food, runes, pop, buildTime, buildCost, razeCost)
-    };
+    // Store last debug snapshot (uses core/debug.js)
+    window._debugReport = Debug.buildReport(window._scrapedGameData || null, state);
 
   }
 
@@ -1055,20 +928,9 @@
   inputPanel.insertBefore(importBar, inputPanel.firstChild);
   document.getElementById('importBtn').addEventListener('click', importGameData);
   document.getElementById('debugBtn').addEventListener('click', () => {
-    const json = JSON.stringify(window._debugData || {}, null, 2);
-    // Build filename: province_race_YYYYMMDD_HHMM.json
-    const d = window._debugData || {};
-    const name = (d.scraped && d.scraped.provinceName) || 'unknown';
-    const race = (d.state && d.state.race) || '';
-    const now = new Date();
-    const ts = now.getFullYear()
-      + String(now.getMonth() + 1).padStart(2, '0')
-      + String(now.getDate()).padStart(2, '0')
-      + '_' + String(now.getHours()).padStart(2, '0')
-      + String(now.getMinutes()).padStart(2, '0');
-    const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `debug_${safeName}_${race}_${ts}.json`;
-    // Download as file
+    const report = window._debugReport || {};
+    const json = JSON.stringify(report, null, 2);
+    const filename = Debug.generateFilename(report);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1076,7 +938,6 @@
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    // Also copy to clipboard
     navigator.clipboard.writeText(json).catch(() => {});
   });
 
