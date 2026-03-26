@@ -47,6 +47,8 @@
     opt.textContent = dragon.name;
     dragonSelect.appendChild(opt);
   }
+  // Update dragon summary when user changes selection
+  dragonSelect.addEventListener('change', (e) => renderDragonSummary(e.target.value));
 
   // ---------------------------------------------------------------------------
   // POPULATE BUILDING INPUTS
@@ -378,13 +380,18 @@
   // GATHER STATE FROM DOM
   // ---------------------------------------------------------------------------
   function calcEowcfTicksElapsed() {
+    // Use scraped value if available (most accurate)
+    if (window._scrapedEowcfTicksElapsed !== undefined) {
+      return window._scrapedEowcfTicksElapsed;
+    }
+    // Fallback: calculate from start date (manual entry)
     const startStr = document.getElementById('eowcfStartDate')?.value?.trim();
     const currentStr = window._utopianDate;
-    if (!startStr || !currentStr) return Infinity;
+    if (!startStr || !currentStr) return 0;
     const normalized = startStr.replace(/\s+of\s+/i, ', ');
     const start = Scrapers.parseUtopianDate(normalized);
     const current = Scrapers.parseUtopianDate(currentStr);
-    if (!start || !current) return Infinity;
+    if (!start || !current) return 0;
     return Math.max(0, Scrapers.utopianDateToTicks(current) - Scrapers.utopianDateToTicks(start));
   }
 
@@ -394,6 +401,8 @@
     const race = GAME_DATA.races[raceKey];
     const personality = GAME_DATA.personalities[persKey];
 
+    // Build buildings object from DOM inputs.
+    // Form values already show completed buildings only (from scraper).
     const buildings = {};
     for (const key of Object.keys(GAME_DATA.buildings)) {
       const el = document.getElementById('bld_' + key);
@@ -454,6 +463,7 @@
       ritualEffectiveness: (parseFloat(document.getElementById('ritualEffectiveness')?.value) || 100) / 100,
       dragon: document.getElementById('dragon')?.value || 'none',
       wageRate: parseFloat(document.getElementById('wageRate')?.value) || 100,
+      baseMilitaryEfficiency: parseFloat(document.getElementById('baseMilitaryEfficiency')?.value) || null,
       multiAttackProtection: document.getElementById('multiAttackProtection')?.value || 'not hit',
       inTraining: window._inTraining || {},
       inConstruction: window._inConstruction || {},
@@ -624,7 +634,7 @@
     const pop = Engine.calcPopGrowth(state);
     const popClass = pop.netPeasantChange >= 0 ? 'positive' : 'negative';
     const popTitle = state.eowcfActive
-      ? `Population Growth (CF tick ${pop.ticksElapsed + 1})`
+      ? `Population Growth (EOWCF tick ${state.eowcfTicksElapsed + 1}/${GAME_DATA.eowcf.totalDuration || 97})`
       : 'Population Growth';
     renderCard(popTitle, [
       ['Max Population', fmt(pop.maxPop)],
@@ -699,14 +709,23 @@
 
     // --- OME Card ---
     const ome = Engine.calcOME(state);
+    const omeWageRows = [];
+    if (ome.baseMEResult.scrapedBaseME != null) {
+      // Show both set and effective wage rates when Base ME is available
+      omeWageRows.push(['  Base ME (scraped)', ome.baseMEResult.scrapedBaseME.toFixed(2) + '%']);
+      omeWageRows.push(['  Set Wage Rate', fmtPct(state.wageRate || 100) + ' (user config)']);
+      omeWageRows.push(['  Effective Wage Rate', fmtPct(ome.baseMEResult.effectiveWageRate) + ' (calculated)']);
+    } else {
+      // Show only the wage rate (will be set rate, no convergence)
+      omeWageRows.push(['  Wage Rate', fmtPct(ome.baseMEResult.wageRate) + ' (instant change)']);
+    }
     renderCard('Offensive Military Efficiency (OME)', [
       ['Base ME', ome.baseME.toFixed(2) + '%', 'highlight'],
-      ['  Wage Rate', fmtPct(ome.baseMEResult.wageRate)],
+      ...omeWageRows,
       ['  Ruby Dragon', ome.baseMEResult.rubyMod !== 1 ? 'x' + ome.baseMEResult.rubyMod.toFixed(2) : '-'],
       ['  MAP (' + (state.multiAttackProtection || 'not hit') + ')', ome.baseMEResult.mapMod !== 1 ? 'x' + ome.baseMEResult.mapMod.toFixed(4) : '-'],
-      ['Training Grounds Bonus', '+' + ome.tgBonus.toFixed(2) + '%'],
+      ['Training Grounds', ome.tgMod !== 1 ? 'x' + ome.tgMod.toFixed(4) + ' (+' + ome.tgPct.toFixed(2) + '%)' : '-'],
       ['Honor (' + (state.honor ? state.honor.titleName : 'Peasant') + ')', 'x' + ome.honorOME.toFixed(3)],
-      ['Effective Base', (ome.effectiveBase + ome.tgBonus).toFixed(2) + '%', 'highlight'],
       ['Tactics Science', 'x' + ome.sciTactics.toFixed(3)],
       ome.raceOME !== 1
         ? [`Race (${state.race.name})`, 'x' + ome.raceOME.toFixed(2)]
@@ -727,16 +746,29 @@
         ? [`${GAME_DATA.rituals[state.ritual]?.name || state.ritual} Ritual`, 'x' + ome.ritualOME.toFixed(3)]
         : null,
       ['Final OME', ome.ome.toFixed(2) + '%', 'highlight']
-    ].filter(Boolean));
+    ].filter(Boolean),
+    ome.baseMEResult.scrapedBaseME != null
+      ? 'Effective Wage Rate converges slowly over ~96 ticks (closes 5% of gap per tick). When wages change, OME/DME adjust gradually, not instantly.'
+      : 'Set Wage Rate applies instantly (no Base ME data available for convergence calculation).');
 
     // --- DME Card ---
     const dme = Engine.calcDME(state);
+    const dmeWageRows = [];
+    if (dme.baseMEResult.scrapedBaseME != null) {
+      // Show both set and effective wage rates when Base ME is available
+      dmeWageRows.push(['  Base ME (scraped)', dme.baseMEResult.scrapedBaseME.toFixed(2) + '%']);
+      dmeWageRows.push(['  Set Wage Rate', fmtPct(state.wageRate || 100) + ' (user config)']);
+      dmeWageRows.push(['  Effective Wage Rate', fmtPct(dme.baseMEResult.effectiveWageRate) + ' (calculated)']);
+    } else {
+      // Show only the wage rate (will be set rate, no convergence)
+      dmeWageRows.push(['  Wage Rate', fmtPct(dme.baseMEResult.wageRate) + ' (instant change)']);
+    }
     renderCard('Defensive Military Efficiency (DME)', [
       ['Base ME', dme.baseME.toFixed(2) + '%', 'highlight'],
-      ['  Wage Rate', fmtPct(dme.baseMEResult.wageRate)],
+      ...dmeWageRows,
       ['  Ruby Dragon', dme.baseMEResult.rubyMod !== 1 ? 'x' + dme.baseMEResult.rubyMod.toFixed(2) : '-'],
       ['  MAP (' + (state.multiAttackProtection || 'not hit') + ')', dme.baseMEResult.mapMod !== 1 ? 'x' + dme.baseMEResult.mapMod.toFixed(4) : '-'],
-      ['Forts Bonus', '+' + dme.fortsBonus.toFixed(2) + '%'],
+      ['Forts', dme.fortsMod !== 1 ? 'x' + dme.fortsMod.toFixed(4) + ' (+' + dme.fortsPct.toFixed(2) + '%)' : '-'],
       ['Strategy Science', 'x' + dme.sciStrategy.toFixed(3)],
       dme.raceDME !== 1
         ? [`Race (${state.race.name})`, 'x' + dme.raceDME.toFixed(2)]
@@ -760,6 +792,37 @@
         ? [`${GAME_DATA.rituals[state.ritual]?.name || state.ritual} Ritual`, 'x' + dme.ritualDME.toFixed(3)]
         : null,
       ['Final DME', dme.dme.toFixed(2) + '%', 'highlight']
+    ].filter(Boolean),
+    dme.baseMEResult.scrapedBaseME != null
+      ? 'Effective Wage Rate converges slowly over ~96 ticks (closes 5% of gap per tick). When wages change, OME/DME adjust gradually, not instantly.'
+      : 'Set Wage Rate applies instantly (no Base ME data available for convergence calculation).');
+
+    // --- Networth Card ---
+    const nw = Engine.calcNetworth(state);
+    renderCard('Province Networth', [
+      ['Peasants', `${fmt(state.peasants)} x 0.25 = ${fmt(nw.peasantsNW)}`],
+      ['Soldiers', `${fmt(state.soldiers)} x ${(state.race.military.soldiers.off + state.race.military.soldiers.def) * 0.25} = ${fmt(nw.soldiersNW)}`],
+      ['Off Specs', `${fmt(state.offSpecs)} x ${state.race.military.offSpec.off * 0.4} = ${fmt(nw.offSpecsNW)}`],
+      ['Def Specs', `${fmt(state.defSpecs)} x ${state.race.military.defSpec.def * 0.5} = ${fmt(nw.defSpecsNW)}`],
+      ['Elites', `${fmt(state.elites)} x ${state.race.military.elites.nw} = ${fmt(nw.elitesNW)}`],
+      nw.horsesNW > 0
+        ? ['Horses', `${fmt(state.horses || 0)} x ${state.race.military.warHorses.off * 0.3} = ${fmt(nw.horsesNW)}`]
+        : null,
+      nw.prisonersNW > 0
+        ? ['Prisoners', `${fmt(state.prisoners)} x ${state.race.military.soldiers.off * 0.2} = ${fmt(nw.prisonersNW)}`]
+        : null,
+      ['Thieves', `${fmt(state.thieves)} x 5 = ${fmt(nw.thievesNW)}`],
+      ['Wizards', `${fmt(state.wizards)} x 7 = ${fmt(nw.wizardsNW)}`],
+      ['Gold', `${fmt(state.gold)} / 1000 = ${fmt(nw.goldNW)}`],
+      nw.booksNW > 0
+        ? ['Science Books', `${fmt(state.books || 0)} x 0.000006 x ${fmt(state.acres)} = ${fmt(nw.booksNW)}`]
+        : null,
+      ['Barren Land', `${fmt(state.buildings.barrenLand || 0)} x 40 = ${fmt(nw.barrenNW)}`],
+      ['Buildings', `${fmt(nw.completedBuildings)} x 60 = ${fmt(nw.buildingsNW)}`],
+      nw.wipNW > 0
+        ? ['Buildings WIP', `${fmt(state.buildings.buildingsInProgress || 0)} x 50 = ${fmt(nw.wipNW)}`]
+        : null,
+      ['Total Networth', fmt(nw.totalNW), 'highlight']
     ].filter(Boolean));
 
     // Store last debug snapshot (uses core/debug.js)
@@ -835,6 +898,7 @@
       fill('elites', d.elites);
       fill('prisoners', d.prisoners);
       fill('wageRate', d.wageRate);
+      fill('baseMilitaryEfficiency', d.baseMilitaryEfficiency);
 
       // Multi-Attack Protection from state page
       if (d.multiAttackProtection) {
@@ -909,23 +973,55 @@
       }
       fill('ritualEffectiveness', d.ritualEffectiveness);
 
+      // Active dragon (offensive dragon sent by enemy)
+      if (d.dragon) {
+        const dragonEl = document.getElementById('dragon');
+        if (dragonEl) {
+          dragonEl.value = d.dragon;
+          renderDragonSummary(d.dragon);
+        }
+      }
+
       // Store current Utopian date for engine calculations
       if (d.utopianDate) {
         window._utopianDate = d.utopianDate;
       }
 
-      // Auto-calculate EOWCF remaining duration from scraped dates
-      if (d.utopianDate && d.eowcfEndDate) {
-        const current = Scrapers.parseUtopianDate(d.utopianDate);
-        const end = Scrapers.parseUtopianDate(d.eowcfEndDate);
-        if (current && end) {
-          const ticksLeft = Scrapers.utopianDateToTicks(end) - Scrapers.utopianDateToTicks(current);
-          const cfActive = ticksLeft > 0;
-          fill('eowcfDuration', cfActive ? ticksLeft : 0);
-          eowcfCheckbox.checked = cfActive;
-          toggleEowcfFields();
-          saveEowcfState();
+      // EOWCF data - auto-populate checkbox, dates, and remaining ticks
+      if (d.eowcfActive && d.eowcfEndDate) {
+        eowcfCheckbox.checked = true;
+
+        // Calculate remaining ticks and start date
+        if (d.utopianDate) {
+          const current = Scrapers.parseUtopianDate(d.utopianDate);
+          const end = Scrapers.parseUtopianDate(d.eowcfEndDate);
+          if (current && end) {
+            const currentTicks = Scrapers.utopianDateToTicks(current);
+            const endTicks = Scrapers.utopianDateToTicks(end);
+            const ticksRemaining = Math.max(0, endTicks - currentTicks);
+
+            // Fill remaining ticks
+            fill('eowcfDuration', ticksRemaining);
+
+            // Calculate and fill start date: end date - 97 ticks
+            const totalDuration = GAME_DATA.eowcf.totalDuration || 97;
+            const startTicks = endTicks - totalDuration;
+            const startDate = Scrapers.ticksToUtopianDate(startTicks);
+            if (startDate) {
+              const startStr = `${startDate.month} ${startDate.day} of YR${startDate.year}`;
+              fill('eowcfStartDate', startStr);
+            }
+          }
         }
+
+        // Store scraped elapsed ticks
+        window._scrapedEowcfTicksElapsed = d.eowcfTicksElapsed || 0;
+
+        toggleEowcfFields();
+        saveEowcfState();
+      } else {
+        eowcfCheckbox.checked = false;
+        window._scrapedEowcfTicksElapsed = undefined;
       }
 
       // Display current date and CF end date

@@ -30,10 +30,15 @@ const Scrapers = {
     return match ? parseFloat(match[1]) : 0;
   },
 
-  /** Utopian month name to index (0-based) */
+  /** Utopian month name to index (0-based) - supports full and abbreviated names */
   utopianMonths: {
-    'january': 0, 'february': 1, 'march': 2, 'april': 3,
-    'may': 4, 'june': 5, 'july': 6
+    'january': 0, 'jan': 0,
+    'february': 1, 'feb': 1,
+    'march': 2, 'mar': 2,
+    'april': 3, 'apr': 3,
+    'may': 4,
+    'june': 5, 'jun': 5,
+    'july': 6, 'jul': 6
   },
 
   /**
@@ -56,6 +61,23 @@ const Scrapers = {
   utopianDateToTicks(date) {
     if (!date) return 0;
     return ((date.year - 1) * 7 * 24) + (date.month * 24) + (date.day - 1);
+  },
+
+  /**
+   * Convert ticks since YR1 Jan 1 back to Utopian date.
+   * Inverse of utopianDateToTicks().
+   * @param {number} ticks - Ticks since YR1 Jan 1
+   * @returns {Object|null} - {year, month, day} where month is a string name
+   */
+  ticksToUtopianDate(ticks) {
+    if (ticks < 0) return null;
+    const ticksPerYear = 7 * 24;  // 7 months × 24 days
+    const year = Math.floor(ticks / ticksPerYear) + 1;
+    const ticksIntoYear = ticks % ticksPerYear;
+    const month = Math.floor(ticksIntoYear / 24);
+    const day = (ticksIntoYear % 24) + 1;
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July'];
+    return { year, month: monthNames[month], day };
   },
 
   /**
@@ -419,6 +441,16 @@ const Scrapers = {
         console.log('[Utopia Smart Tools] Detected active spells:', Object.keys(data.activeSpells).join(', ') || 'none');
       }
 
+      // Initialize conditional fields to defaults so they always overwrite stale data.
+      // These fields are only set when specific messages are found in advice-message.
+      // Without defaults, old values persist in chrome.storage when conditions expire.
+      data.dragon = 'none';
+      data.ritual = 'none';
+      data.ritualEffectiveness = null;
+      data.eowcfEndDate = null;
+      data.eowcfActive = false;
+      // Note: eowcfTicksElapsed is calculated in content_script after merge
+
       // Active ritual from advice-message paragraphs
       // "We are covered by the Expedient ritual..."
       const adviceMsgs = gameContent.querySelectorAll('.advice-message');
@@ -437,10 +469,31 @@ const Scrapers = {
             break;
           }
         }
+
+        // Dragon detection (offensive dragon sent by enemy)
+        // "The Ruby Dragon, Killer komodo, ravages our lands!"
+        if (msgText.includes('ravages our lands!')) {
+          const dragonMatch = msgText.match(/The (\w+) Dragon,.*?ravages our lands!/i);
+          if (dragonMatch) {
+            const dragonType = dragonMatch[1].toLowerCase();
+            // Validate against known dragons
+            if (['ruby', 'topaz', 'celestite', 'amethyst', 'emerald', 'sapphire'].includes(dragonType)) {
+              data.dragon = dragonType;
+            }
+          }
+        }
+
         // EOWCF end date: "ceasefire state will expire on January 6 of YR6!"
+        // Game only shows this message WHILE EOWCF is active. Once expired, message disappears.
+        // EOWCF always lasts exactly 97 ticks. x10 birth bonus applies first 24 ticks only.
         const cfMatch = msgText.match(/expire on (\w+ \d+) of (YR\d+)/i);
         if (cfMatch) {
-          data.eowcfEndDate = `${cfMatch[1]}, ${cfMatch[2]}`;
+          const endDateStr = `${cfMatch[1]}, ${cfMatch[2]}`;
+          data.eowcfEndDate = endDateStr;
+          data.eowcfActive = true;  // Message present = EOWCF active
+
+          // Note: eowcfTicksElapsed will be calculated in content_script after merge,
+          // where both utopianDate and eowcfEndDate are available.
         }
       }
     }
@@ -531,13 +584,18 @@ const Scrapers = {
       }
     }
 
-    // Wage rate: "Our wage rate is 20.0% of normal levels"
+    // Wage rate and Base ME: "Our wage rate is 20.0% of normal levels, and our military is functioning at 106.6% efficiency"
     const gameContent = doc.querySelector('.game-content');
     if (gameContent) {
       const text = gameContent.textContent;
       const wageMatch = text.match(/wage rate is ([\d.]+)%/i);
       if (wageMatch) {
         data.wageRate = parseFloat(wageMatch[1]);
+      }
+      // Base Military Efficiency
+      const baseMEMatch = text.match(/military is functioning at ([\d.]+)%/i);
+      if (baseMEMatch) {
+        data.baseMilitaryEfficiency = parseFloat(baseMEMatch[1]);
       }
     }
 
@@ -733,6 +791,7 @@ const Scrapers = {
     const data = { _page: 'science', _scrapedAt: Date.now(), sciences: {} };
 
     // Science rows: <td>Name</td><td>BookCount</td><td>+X.X% Effect</td>
+    let totalBooks = 0;
     const tables = doc.querySelectorAll('table');
     for (const table of tables) {
       const rows = table.querySelectorAll('tr');
@@ -744,9 +803,15 @@ const Scrapers = {
         const sciKey = this.scienceNameMap[name];
         if (sciKey) {
           data.sciences[sciKey] = this.parsePct(tds[2].textContent);
+          // Sum book counts from column 2 for total science books
+          const bookCount = this.parseNum(tds[1].textContent);
+          if (bookCount > 0) totalBooks += bookCount;
         }
       }
     }
+
+    // Store total science books for networth calculation
+    if (totalBooks > 0) data.books = totalBooks;
 
     return Object.keys(data.sciences).length > 0 ? data : null;
   },

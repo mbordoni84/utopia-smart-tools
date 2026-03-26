@@ -620,8 +620,9 @@ const GAME_DATA = {
   ],
 
   eowcf: {
-    birthRateMultiplier: 10,
-    birthRateBoostedTicks: 24,
+    totalDuration: 97,           // EOWCF always lasts exactly 97 ticks
+    birthRateMultiplier: 10,     // x10 birth rate for first 24 ticks
+    birthRateBoostedTicks: 24,   // Birth boost duration (first 24 ticks)
     minPeasantsBorn: 500,
     popBoostThreshold: 0.50,
     popBoostAmount: 0.20,

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Debug Export Test</title>
+  <style>
+    body {
+      font-family: 'Consolas', 'Monaco', monospace;
+      margin: 20px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+    }
+    h1 { color: #e94560; }
+    .btn {
+      background: #e94560;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 10px 5px;
+    }
+    .btn:hover { background: #d63651; }
+    .status {
+      padding: 12px;
+      margin: 12px 0;
+      border-radius: 4px;
+      background: #0f3460;
+    }
+    .success { background: #0a3d0a; border: 2px solid #2ecc71; }
+    .error { background: #3d0a0a; border: 2px solid #e74c3c; }
+    pre {
+      background: #0f3460;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Debug Export Test</h1>
+
+  <div style="background: #0f3460; padding: 12px; margin: 12px 0; border-radius: 4px; border-left: 4px solid #e94560;">
+    <strong>How to use:</strong>
+    <ol style="margin: 8px 0;">
+      <li><strong>Open via extension:</strong> Right-click extension icon → "Inspect popup" → Console → <code>window.open('tests/debug_export.html')</code></li>
+      <li><strong>OR</strong> Navigate to: <code>chrome-extension://[your-extension-id]/tests/debug_export.html</code></li>
+      <li>Click "Export from chrome.storage" after visiting game pages</li>
+    </ol>
+  </div>
+
+  <div>
+    <button class="btn" id="btnExportStorage">Export from chrome.storage (Extension Context)</button>
+    <button class="btn" id="btnExportFile">Import & Export from Previous JSON</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="output"></div>
+
+  <script src="../data/game_data.js"></script>
+  <script src="../data/spells.js"></script>
+  <script src="../scraper/scrapers.js"></script>
+  <script src="../core/utils.js"></script>
+  <script src="../core/engine.js"></script>
+  <script src="../core/state.js"></script>
+  <script src="../core/debug.js"></script>
+  <script src="debug_export.js"></script>
+</body>
+</html>

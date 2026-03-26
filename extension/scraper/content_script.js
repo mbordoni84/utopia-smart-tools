@@ -42,9 +42,9 @@
       if (scraped.sciences) {
         scraped.sciences = Object.assign({}, existing.sciences || {}, scraped.sciences);
       }
-      if (scraped.inConstruction) {
-        scraped.inConstruction = Object.assign({}, existing.inConstruction || {}, scraped.inConstruction);
-      }
+      // NOTE: inConstruction is NOT merged with old data — it's a complete snapshot
+      // from the buildings page. Replace to prevent completed buildings from persisting.
+      // (No merge needed - scraped.inConstruction already contains the full current state)
       if (scraped.buildingEffects) {
         scraped.buildingEffects = Object.assign({}, existing.buildingEffects || {}, scraped.buildingEffects);
       }
@@ -59,6 +59,23 @@
       delete merged.spellMinersM;
       delete merged.spellBuildBoon;
       merged._lastUpdated = Date.now();
+
+      // Calculate EOWCF elapsed ticks from merged data (utopianDate + eowcfEndDate)
+      if (merged.eowcfActive && merged.eowcfEndDate && merged.utopianDate) {
+        const currentDate = Scrapers.parseUtopianDate(merged.utopianDate);
+        const endDate = Scrapers.parseUtopianDate(merged.eowcfEndDate);
+        if (currentDate && endDate) {
+          const currentTicks = Scrapers.utopianDateToTicks(currentDate);
+          const endTicks = Scrapers.utopianDateToTicks(endDate);
+          const ticksRemaining = Math.max(0, endTicks - currentTicks);
+          const totalDuration = (typeof GAME_DATA !== 'undefined' && GAME_DATA.eowcf && GAME_DATA.eowcf.totalDuration) ? GAME_DATA.eowcf.totalDuration : 97;
+          merged.eowcfTicksElapsed = totalDuration - ticksRemaining;
+        } else {
+          merged.eowcfTicksElapsed = 0;  // Fallback if date parsing fails
+        }
+      } else {
+        merged.eowcfTicksElapsed = 0;  // Not in EOWCF or missing dates
+      }
 
       // Clean up timestamps from removed scrapers
       const pageTimestamps = Object.assign({}, existing._pageTimestamps || {});

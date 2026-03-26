@@ -16,7 +16,7 @@ BE = 0.5 * (1 + %Jobs) * Race * Pers * ToolsSci * Ritual * Dragon * Blizzard * C
 - **Construction Delays**: 0.90x BE (NOT shown in game's BE display)
 - Practical cap at 1.5 to avoid unrealistic values
 
-**Discovery**: The game's council_internal "Quantity" column is the authoritative building count for ALL calculations — jobs, building effects, max pop, birth rate. The engine uses raw scraped Quantity as `state.buildings` with no WIP subtraction. Confirmed with fresh same-tick data: TG=338 gives 13.58% effect (game 13.57%), bank=243 gives 15.62% (game 15.61%), homes=243 gives 72.9 birth (game 72.9). Previous analysis with stale cross-tick data was misleading.
+**Confirmed**: The game's council_internal "Quantity" column shows ONLY completed buildings, excluding WIP. The engine uses these scraped values directly without modification. WIP buildings are tracked separately in `inConstruction` for display purposes and future construction scheduling. Debug data from multiple game states confirms this behavior.
 
 **Discovery**: Game BE adjusts gradually (not instantly) when workers/buildings change. Expect ~3% gap when recently changed.
 
@@ -121,7 +121,7 @@ Cost = ROUND(0.05 * (Acres+10000) * Race * Pers * MillsMod * CostDouble * Ritual
 Raze = ROUND((300 + 0.05*Acres) * Artisan * Race * Pers)
 ```
 
-- Builder's Boon: 0.75x time, 2x cost
+- Builder's Boon: 0.75x time, NO cost change
 - Double Speed: 0.50x time, 2x cost
 
 ## Training
@@ -144,6 +144,52 @@ EffectiveMod = 1 + (TitleBonus - 1) * RaceHonorScale * PersHonorScale
 
 - War Hero personality: 1.50x honor bonus portion
 - Title determined by numeric honor value against threshold table
+
+## Military Efficiency
+
+### Base Military Efficiency
+```
+Base ME = (33 + 67 * (Effective Wage Rate / 100)^0.25) * Ruby Dragon * MAP Bonus
+```
+- Effective Wage Rate converges slowly (5% of gap per tick, ~96 ticks for full convergence)
+- Ruby Dragon: 0.85x modifier
+- MAP Bonus: 1.4%, 2.8%, 5.5%, 7.5%, 10% depending on level
+
+### Offensive Military Efficiency (OME)
+```
+OME = Base ME * Honor * Training Grounds * Tactics * Race * Personality * Spells * Ritual
+```
+**IMPORTANT:** Training Grounds is **multiplicative**, not additive (wiki shows incorrect formula)
+- Training Grounds: 1 + (% * 1.5) — e.g., 2.95% → 1.0295x
+- Spells: Fanaticism (1.05x), Bloodlust (1.10x), Plague (0.90x)
+
+### Defensive Military Efficiency (DME)
+```
+DME = Base ME * Forts * Strategy * Race * Personality * Spells * Ritual
+```
+**IMPORTANT:** Forts is **multiplicative**, not additive (wiki shows incorrect formula)
+- Forts: 1 + (% * 1.5) — e.g., 3.5% → 1.035x
+- NO Honor bonus for DME
+- Spells: Minor Protection (1.05x), Greater Protection (1.05x), Fanaticism (0.95x), Plague (0.85x)
+
+## Offense & Defense Points
+
+### Offense Points (displayed in Military page)
+```
+Raw Offense = (Soldiers × 3) + (Off Specs × [base + War Hero bonus]) + (Elites × off)
+Offense Points = Raw Offense × OME
+```
+- War Hero personality adds +2 to Off Spec strength
+- Game display excludes: generals (+5% each), horses (+2 off each)
+- Example (Orc War Hero): Goblins = 13 base + 2 = 15 off
+
+### Defense Points (displayed in Military page)
+```
+Raw Defense = (Soldiers × def) + (Off Specs × def) + (Def Specs × def) + (Elites × def)
+Defense Points = Raw Defense × DME
+```
+- Game display excludes: generals, peasants defending, war doctrines
+- DME does NOT include honor (unlike OME)
 
 ## Scraper Notes
 

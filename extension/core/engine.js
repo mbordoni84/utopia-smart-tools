@@ -104,7 +104,7 @@ const Engine = {
   },
 
   // --- Construction Cost ---
-  // 0.05*(land+10000) * Race * Pers * Mills * BB/DS cost * Ritual * Artisan * Dragon
+  // 0.05*(land+10000) * Race * Pers * Mills * Double Speed cost * Ritual * Artisan * Dragon
   calcConstructionCost(state) {
     const acres = state.acres;
     const baseCost = 0.05 * (acres + 10000);
@@ -118,8 +118,8 @@ const Engine = {
     );
     const millsMod = 1 - (millsPct / 100);
 
-    // BB and Double Speed both x2 cost
-    const costDoubleMod = (state.spellBuildBoon || state.doubleSpeed) ? 2.0 : 1;
+    // Double Speed doubles cost (Builder's Boon does NOT affect cost)
+    const costDoubleMod = state.doubleSpeed ? 2.0 : 1;
 
     let ritualMod = 1;
     const ritualData = GAME_DATA.rituals[state.ritual];
@@ -463,12 +463,20 @@ const Engine = {
     return mapValues[normalized] || 0;
   },
 
+  // --- Effective Wage Rate from Base ME ---
+  // Reverse engineers effective wage rate from scraped Base ME
+  // Formula: EWR = 100 * [(baseME / (rubyMod * mapMod) - 33) / 67]^4
+  calcEffectiveWageRate(baseME, rubyMod, mapMod) {
+    const adjusted = baseME / (rubyMod * mapMod);
+    const ratio = (adjusted - 33) / 67;
+    const effectiveWR = 100 * Math.pow(ratio, 4);
+    return Math.max(20, Math.min(200, effectiveWR)); // clamp to 20-200%
+  },
+
   // --- Base Military Efficiency ---
   // Formula: (33 + 67 * (wageRate/100)^0.25) * RubyDragon * MAP_Bonus
+  // If baseMilitaryEfficiency is scraped from game, use it to calculate effective wage rate
   calcBaseME(state) {
-    const wageRate = state.wageRate || 100;
-    const base = 33 + 67 * Math.pow(wageRate / 100, 0.25);
-
     // Ruby Dragon penalty
     const rubyMod = (state.dragon === 'ruby') ? 0.85 : 1.0;
 
@@ -476,26 +484,45 @@ const Engine = {
     const mapBonus = this.mapStringToBonus(state.multiAttackProtection || 'not hit');
     const mapMod = 1 + mapBonus;
 
-    const baseME = base * rubyMod * mapMod;
+    // If we have scraped Base ME from game, reverse engineer the effective wage rate
+    let wageRate = state.wageRate || 100;
+    let baseME;
+    let effectiveWageRate = null;
 
-    return { base, wageRate, rubyMod, mapBonus, mapMod, baseME };
+    if (state.baseMilitaryEfficiency) {
+      // Use scraped Base ME and calculate effective wage rate
+      baseME = state.baseMilitaryEfficiency;
+      effectiveWageRate = this.calcEffectiveWageRate(baseME, rubyMod, mapMod);
+      wageRate = effectiveWageRate; // Use for display
+    } else {
+      // Fallback: calculate from set wage rate (will be inaccurate if wages recently changed)
+      wageRate = state.wageRate || 100;
+      const base = 33 + 67 * Math.pow(wageRate / 100, 0.25);
+      baseME = base * rubyMod * mapMod;
+    }
+
+    const base = 33 + 67 * Math.pow(wageRate / 100, 0.25);
+
+    return { base, wageRate, rubyMod, mapBonus, mapMod, baseME, effectiveWageRate,
+             scrapedBaseME: state.baseMilitaryEfficiency || null };
   },
 
   // --- Offensive Military Efficiency (OME) ---
-  // Formula: (BaseME * Honor + TG_Bonus) * Tactics * Race * Pers * Spells * Ritual
+  // Formula: BaseME * Honor * TG * Tactics * Race * Pers * Spells * Ritual
+  // NOTE: TG is multiplicative, NOT additive (wiki is wrong on this)
   calcOME(state) {
     const baseMEResult = this.calcBaseME(state);
     const baseME = baseMEResult.baseME;
 
-    // Training Grounds bonus (additivo a base)
+    // Training Grounds bonus (MULTIPLICATIVE)
     const beResult = this.calcBE(state);
-    const tgBonus = this.calcPctBuildingEffect(
+    const tgPct = this.calcPctBuildingEffect(
       1.5, state.buildings.trainingGrounds || 0, state.acres, beResult.be
     );
+    const tgMod = 1 + (tgPct / 100);
 
     // Honor OME (moltiplicativo sulla base ME)
     const honorOME = (state.honor && state.honor.ome) || 1.0;
-    const effectiveBase = baseME * honorOME;
 
     // Science (Tactics)
     const sciTactics = 1 + ((state.sciTactics || 0) / 100);
@@ -518,27 +545,29 @@ const Engine = {
       ritualOME = 1 + ritualData.effects.ome * (state.ritualEffectiveness || 1);
     }
 
-    const ome = (effectiveBase + tgBonus) * sciTactics * raceOME * persOME
+    const ome = baseME * honorOME * tgMod * sciTactics * raceOME * persOME
       * fanaticism * bloodlust * plague * ritualOME;
 
     return {
-      baseMEResult, baseME, tgBonus, honorOME, effectiveBase, sciTactics,
+      baseMEResult, baseME, tgPct, tgMod, honorOME, sciTactics,
       raceOME, persOME, fanaticism, bloodlust, plague, ritualOME, ome
     };
   },
 
   // --- Defensive Military Efficiency (DME) ---
-  // Formula: (BaseME + Forts_Bonus) * Strategy * Race * Pers * Spells * Ritual
+  // Formula: BaseME * Forts * Strategy * Race * Pers * Spells * Ritual
+  // NOTE: Forts is multiplicative, NOT additive (wiki is wrong on this)
   // Note: NO Honor bonus for DME (per wiki)
   calcDME(state) {
     const baseMEResult = this.calcBaseME(state);
     const baseME = baseMEResult.baseME;
 
-    // Forts bonus (additivo a base)
+    // Forts bonus (MULTIPLICATIVE)
     const beResult = this.calcBE(state);
-    const fortsBonus = this.calcPctBuildingEffect(
+    const fortsPct = this.calcPctBuildingEffect(
       1.5, state.buildings.forts || 0, state.acres, beResult.be
     );
+    const fortsMod = 1 + (fortsPct / 100);
 
     // Science (Strategy)
     const sciStrategy = 1 + ((state.sciStrategy || 0) / 100);
@@ -562,11 +591,11 @@ const Engine = {
       ritualDME = 1 + ritualData.effects.dme * (state.ritualEffectiveness || 1);
     }
 
-    const dme = (baseME + fortsBonus) * sciStrategy * raceDME * persDME
+    const dme = baseME * fortsMod * sciStrategy * raceDME * persDME
       * minorProt * greaterProt * fanaticism * plague * ritualDME;
 
     return {
-      baseMEResult, baseME, fortsBonus, sciStrategy, raceDME, persDME,
+      baseMEResult, baseME, fortsPct, fortsMod, sciStrategy, raceDME, persDME,
       minorProt, greaterProt, fanaticism, plague, ritualDME, dme
     };
   },
@@ -615,5 +644,80 @@ const Engine = {
     const armMod = 1 - Math.min(armReduction / 100, 0.375);
 
     return Math.round(count * unitBaseCost * raceMod * persMod * armMod);
+  },
+
+  // --- Province Networth ---
+  // Formula from wiki lines 5663-5694
+  // Total NW = peasants + military + gold + books + land + buildings
+  // Note: units in training have NW = 0, food/runes have NW = 0
+  calcNetworth(state) {
+    const race = state.race;
+
+    // Peasants: 0.25 each
+    const peasantsNW = state.peasants * 0.25;
+
+    // Soldiers: (off + def) * 0.25 each
+    const soldierNWPerUnit = (race.military.soldiers.off + race.military.soldiers.def) * 0.25;
+    const soldiersNW = state.soldiers * soldierNWPerUnit;
+
+    // Off Specs: off points * 0.4
+    const offSpecNWPerUnit = race.military.offSpec.off * 0.4;
+    const offSpecsNW = state.offSpecs * offSpecNWPerUnit;
+
+    // Def Specs: def points * 0.5
+    const defSpecNWPerUnit = race.military.defSpec.def * 0.5;
+    const defSpecsNW = state.defSpecs * defSpecNWPerUnit;
+
+    // Elites: pre-calculated in race.military.elites.nw
+    const eliteNWPerUnit = race.military.elites.nw;
+    const elitesNW = state.elites * eliteNWPerUnit;
+
+    // Horses: off points * 0.3
+    const horseNWPerUnit = race.military.warHorses.off * 0.3;
+    const horsesNW = (state.horses || 0) * horseNWPerUnit;
+
+    // Prisoners: off points * 0.2 (use soldier off value)
+    const prisonerNWPerUnit = race.military.soldiers.off * 0.2;
+    const prisonersNW = state.prisoners * prisonerNWPerUnit;
+
+    // Thieves: 5 each
+    const thievesNW = state.thieves * 5;
+
+    // Wizards: 7 each
+    const wizardsNW = state.wizards * 7;
+
+    // Gold: gold / 1000
+    const goldNW = state.gold / 1000;
+
+    // Science Books: books * 0.000006 * acres
+    const booksNW = (state.books || 0) * 0.000006 * state.acres;
+
+    // Barren Land: 40 per acre
+    const barrenLand = state.buildings.barrenLand || 0;
+    const barrenNW = barrenLand * 40;
+
+    // Buildings (complete): 60 each
+    // Count all buildings except barren land and WIP
+    let completedBuildings = 0;
+    for (const [key, count] of Object.entries(state.buildings)) {
+      if (key !== 'barrenLand' && key !== 'buildingsInProgress') {
+        completedBuildings += count;
+      }
+    }
+    const buildingsNW = completedBuildings * 60;
+
+    // Buildings in Progress: 50 each
+    const wipNW = (state.buildings.buildingsInProgress || 0) * 50;
+
+    // Total Networth
+    const totalNW = peasantsNW + soldiersNW + offSpecsNW + defSpecsNW + elitesNW
+      + horsesNW + prisonersNW + thievesNW + wizardsNW + goldNW + booksNW
+      + barrenNW + buildingsNW + wipNW;
+
+    return {
+      peasantsNW, soldiersNW, offSpecsNW, defSpecsNW, elitesNW,
+      horsesNW, prisonersNW, thievesNW, wizardsNW, goldNW, booksNW,
+      barrenNW, buildingsNW, wipNW, completedBuildings, totalNW
+    };
   },
 };

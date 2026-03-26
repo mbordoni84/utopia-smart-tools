@@ -23,13 +23,21 @@ const StateBuilder = {
     const race = GAME_DATA.races[raceKey] || GAME_DATA.races.human;
     const personality = GAME_DATA.personalities[persKey] || GAME_DATA.personalities.generalIn;
 
+    // Build buildings object from scraped data.
+    // Scraped Quantity from council_internal is already the completed count (excludes WIP).
     const bld = d.buildings || {};
     const buildings = {};
     for (const key of Object.keys(GAME_DATA.buildings)) {
-      // Use raw scraped Quantity column as-is. The game uses this for everything:
-      // jobs, building effects, max pop, birth rate. No WIP subtraction needed.
       buildings[key] = bld[key] || 0;
     }
+
+    // Calculate buildings in progress: sum all values in inConstruction
+    const inConstr = d.inConstruction || {};
+    let wipCount = 0;
+    for (const count of Object.values(inConstr)) {
+      wipCount += count || 0;
+    }
+    buildings.buildingsInProgress = wipCount;
 
     const sci = d.sciences || {};
     const as = d.activeSpells || {};
@@ -46,10 +54,12 @@ const StateBuilder = {
       thieves:     d.thieves || 0,
       wizards:     d.wizards || 0,
       prisoners:   d.prisoners || 0,
+      horses:      d.warHorses || 0,
 
       gold:  d.gold || 0,
       food:  d.food || 0,
       runes: d.runes || 0,
+      books: d.books || 0,
 
       buildings,
       inConstruction: d.inConstruction || {},
@@ -94,10 +104,11 @@ const StateBuilder = {
       ritualEffectiveness: (d.ritualEffectiveness || 100) / 100,
       dragon:              d.dragon || 'none',
       wageRate:            d.wageRate || 100,
+      baseMilitaryEfficiency: d.baseMilitaryEfficiency || null,
       multiAttackProtection: d.multiAttackProtection || 'not hit',
 
-      eowcfActive:       false,
-      eowcfTicksElapsed: 0,
+      eowcfActive:       d.eowcfActive || false,
+      eowcfTicksElapsed: d.eowcfTicksElapsed || 0,
       doubleSpeed:       false,
     };
 

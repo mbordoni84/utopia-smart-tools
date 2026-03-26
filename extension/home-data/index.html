@@ -21,8 +21,8 @@
             <input type="text" id="eowcfStartDate" placeholder="e.g. April 5 of YR5">
           </div>
           <div class="form-group">
-            <label for="eowcfDuration">Duration (ticks)</label>
-            <input type="number" id="eowcfDuration" value="48" min="24" max="96">
+            <label for="eowcfDuration">Ticks Remaining</label>
+            <input type="number" id="eowcfDuration" value="0" min="0" max="97" readonly style="opacity:0.7;">
           </div>
           <span class="field-hint" id="eowcfDateInfo"></span>
         </div>
@@ -195,8 +195,14 @@
           <input type="number" id="honor" value="0" min="0">
         </div>
         <div class="form-group">
-          <label for="wageRate">Wage Rate (%)</label>
+          <label for="wageRate">Wage Rate (%) - Set</label>
           <input type="number" id="wageRate" value="100" min="0" max="200" step="5">
+          <span class="field-hint">User-configured wage rate</span>
+        </div>
+        <div class="form-group">
+          <label for="baseMilitaryEfficiency">Base ME (%) - Live</label>
+          <input type="number" id="baseMilitaryEfficiency" value="" min="0" max="200" step="0.1">
+          <span class="field-hint">From military page (auto-scraped)</span>
         </div>
         <div class="form-group">
           <label for="multiAttackProtection">Multi-Attack Protection</label>

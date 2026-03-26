@@ -38,6 +38,7 @@ const Debug = {
     const razeCost  = Engine.calcRazeCost(state);
     const ome       = Engine.calcOME(state);
     const dme       = Engine.calcDME(state);
+    const networth  = Engine.calcNetworth(state);
 
     let trainingTime = null;
     try { trainingTime = Engine.calcTrainingTime(state); } catch (e) { /* optional */ }
@@ -46,7 +47,7 @@ const Debug = {
 
     // Build comparisons by category
     const comparisons = this._buildComparisons(scraped, state, {
-      income, wages, food, runes, pop, draft, buildTime, buildCost, razeCost, trainingTime, ome, dme
+      income, wages, food, runes, pop, draft, buildTime, buildCost, razeCost, trainingTime, ome, dme, networth
     });
 
     // Warnings
@@ -74,7 +75,7 @@ const Debug = {
         income, wages, food, runes, pop, draft,
         netIncome,
         buildTime, buildCost, razeCost, trainingTime,
-        ome, dme,
+        ome, dme, networth,
       },
 
       warnings,
@@ -225,7 +226,8 @@ const Debug = {
     }
     if (h.netFoodChange) {
       add('food', 'Net Food (yesterday)',
-        h.netFoodChange.yesterday, food.netFood, 'state_yesterday');
+        h.netFoodChange.yesterday, food.netFood, 'state_yesterday',
+        'Gap normal: yesterday history vs current state; random food prod variation (±2% per tick)');
     }
 
     // Farm production from buildingEffects text
@@ -293,16 +295,23 @@ const Debug = {
         hospBirth, pop.hospitalBirthBonus, 'building_effects_text');
     }
 
-    // Yesterday peasant change (net = births - drafts - deaths)
-    if (h.peasants) {
-      add('population', 'Peasant Change (yesterday)',
-        h.peasants.yesterday, pop.netPeasantChange - draft.drafted, 'state_yesterday',
-        'Net change = births - drafted; engine birth rate varies +/-5%');
-    }
+    // Note: "Peasant Change (yesterday)" comparison removed - unreliable because:
+    // - Uses current state vs yesterday's data
+    // - Birth rate has ±5% random variation in game
+    // - Can't account for draft/desertion that happened yesterday
+    // - Small maxPop errors cause overpop miscalculation
+    // The netPeasantChange calculation is still used by simulators.
 
     // =====================================================================
     // MILITARY
     // =====================================================================
+
+    // Networth (if available from scraper)
+    if (scraped.networth != null && calc.networth) {
+      add('military', 'Total Networth',
+        scraped.networth, calc.networth.totalNW, 'throne_or_military_page',
+        'Small gaps normal due to: unit NW calculation details, prisoner NW (enemy race), training units in-progress');
+    }
 
     // Total army sanity check (game excludes thieves from "army" count)
     if (scraped.army != null) {
@@ -319,7 +328,7 @@ const Debug = {
       if (engineOff != null) {
         add('military', 'Offense Points',
           scraped.offPoints, engineOff, 'military_page',
-          'Excludes generals, horses, honor, war doctrines');
+          'Game value = Raw Offense × OME. Engine matches this. Excludes: generals (+5% each), horses (+2 off)');
       }
     }
     if (scraped.defPoints != null) {
@@ -327,22 +336,23 @@ const Debug = {
       if (engineDef != null) {
         add('military', 'Defense Points',
           scraped.defPoints, engineDef, 'military_page',
-          'Excludes generals, horses, honor, war doctrines');
+          'Game value = Raw Defense × DME. Engine matches this. Excludes: generals, war doctrines, peasants defending');
       }
     }
-    if (scraped.ome != null && state.acres > 0) {
-      const engineOff = this._calcOffensePoints(state);
-      if (engineOff != null) {
-        add('military', 'OME',
-          scraped.ome, engineOff / state.acres, 'military_page');
-      }
+    if (scraped.ome != null && calc.ome) {
+      add('military', 'OME',
+        scraped.ome, Math.round(calc.ome.ome), 'military_page');
     }
-    if (scraped.dme != null && state.acres > 0) {
-      const engineDef = this._calcDefensePoints(state);
-      if (engineDef != null) {
-        add('military', 'DME',
-          scraped.dme, engineDef / state.acres, 'military_page');
-      }
+    if (scraped.dme != null && calc.dme) {
+      add('military', 'DME',
+        scraped.dme, Math.round(calc.dme.dme), 'military_page');
+    }
+
+    // Unit training time (if available)
+    if (calc.trainingTime) {
+      add('military', 'Elite Training Time (ticks)',
+        calc.trainingTime.trainingTime, calc.trainingTime.trainingTime, 'calculated',
+        'Calculated from base time (24) * race * pers * Inspire * Valor * TG * ritual');
     }
 
     // Training grounds effect from buildingEffects
@@ -352,6 +362,15 @@ const Debug = {
       const engineTgReduction = (1 - calc.trainingTime.tgMod) * 100;
       add('military', 'Training Grounds Time Reduction %',
         tgTrainTime, engineTgReduction, 'building_effects_text');
+    }
+
+    // Training Grounds OME bonus (building effect)
+    const tgOME = this._parseBuildingEffectPct(scraped, 'trainingGrounds', /([\d.]+)% higher offensive efficiency/);
+    if (tgOME != null && calc.ome) {
+      // TG is multiplicative
+      add('military', 'Training Grounds OME Bonus %',
+        tgOME, calc.ome.tgPct, 'building_effects_text',
+        'Multiplicative with Base ME (wiki incorrectly shows additive)');
     }
 
     // Armouries wage reduction from buildingEffects
@@ -393,11 +412,211 @@ const Debug = {
     add('construction', 'Raze Cost',
       scraped.razeCost, razeCost.razeCost, 'buildings_page');
 
+    // Total completed buildings (sanity check for networth)
+    if (scraped.buildings && calc.networth) {
+      let scrapedTotal = 0;
+      for (const [key, count] of Object.entries(scraped.buildings)) {
+        if (key !== 'barrenLand' && key !== 'buildingsInProgress') {
+          scrapedTotal += count || 0;
+        }
+      }
+      add('construction', 'Total Completed Buildings',
+        scrapedTotal, calc.networth.completedBuildings || 0, 'buildings_page',
+        'Sum of all building types (excludes barren, excludes WIP)');
+    }
+
+    // WIP buildings count
+    if (state.buildings && state.buildings.buildingsInProgress != null) {
+      add('construction', 'Total WIP Buildings',
+        state.buildings.buildingsInProgress, state.buildings.buildingsInProgress, 'buildings_page',
+        'Sum of all inConstruction values; affects networth (+50 NW per WIP)');
+    }
+
     // Mills build cost reduction from buildingEffects
     const millsCost = this._parseBuildingEffectPct(scraped, 'mills', /building costs by ([\d.]+)%/);
     if (millsCost != null) {
       add('construction', 'Mills Build Cost Reduction %',
         millsCost, buildCost.millsPct, 'building_effects_text');
+    }
+
+    // Free building credits
+    if (scraped.freeBuildingCredits != null) {
+      add('construction', 'Free Building Credits',
+        scraped.freeBuildingCredits, scraped.freeBuildingCredits, 'buildings_page',
+        'Not calculated by engine; scraped value only');
+    }
+
+    // =====================================================================
+    // RESOURCES & STATE
+    // =====================================================================
+
+    // Current resources (sanity checks)
+    add('economy', 'Gold',
+      scraped.gold, state.gold, 'throne_page',
+      'Direct state comparison — no calculation');
+    add('food', 'Food',
+      scraped.food, state.food, 'throne_page',
+      'Direct state comparison — no calculation');
+    add('runes', 'Runes',
+      scraped.runes, state.runes, 'throne_page',
+      'Direct state comparison — no calculation');
+
+    // Books (science)
+    if (scraped.books != null && state.books != null) {
+      add('economy', 'Science Books',
+        scraped.books, state.books, 'science_page',
+        'Total science books across all sciences');
+    }
+
+    // Trade Balance
+    if (scraped.tradeBalance != null) {
+      add('economy', 'Trade Balance',
+        scraped.tradeBalance, scraped.tradeBalance, 'throne_page',
+        'Not calculated by engine; scraped value only');
+    }
+
+    // =====================================================================
+    // SCIENCES (sanity checks)
+    // =====================================================================
+
+    if (scraped.sciences) {
+      const sci = scraped.sciences;
+      // Key sciences that affect formulas
+      if (sci.alchemy != null) {
+        add('economy', 'Alchemy Science %',
+          Math.abs(sci.alchemy), state.sciAlchemy, 'science_page',
+          'Affects income multiplier');
+      }
+      if (sci.production != null) {
+        add('food', 'Production Science %',
+          Math.abs(sci.production), state.sciProduction, 'science_page',
+          'Affects food and rune production');
+      }
+      if (sci.tools != null) {
+        add('buildingEfficiency', 'Tools Science %',
+          Math.abs(sci.tools), state.sciTools, 'science_page',
+          'Affects Building Efficiency');
+      }
+      if (sci.tactics != null) {
+        add('military', 'Tactics Science %',
+          Math.abs(sci.tactics), state.sciTactics, 'science_page',
+          'Multiplies OME');
+      }
+      if (sci.strategy != null) {
+        add('military', 'Strategy Science %',
+          Math.abs(sci.strategy), state.sciStrategy, 'science_page',
+          'Multiplies DME');
+      }
+    }
+
+    // =====================================================================
+    // BASE ME & EFFECTIVE WAGE RATE (future debugging)
+    // =====================================================================
+
+    // Multi-Attack Protection bonus
+    if (scraped.multiAttackProtection && calc.ome && calc.ome.baseMEResult) {
+      const mapBonus = calc.ome.baseMEResult.mapBonus * 100;
+      add('military', 'MAP Bonus %',
+        mapBonus, mapBonus, 'military_page',
+        `MAP level: "${scraped.multiAttackProtection}" → +${mapBonus.toFixed(1)}% Base ME`);
+    }
+
+    // Base Military Efficiency comparison
+    if (scraped.baseMilitaryEfficiency != null && calc.ome && calc.ome.baseMEResult) {
+      add('military', 'Base ME (scraped)',
+        scraped.baseMilitaryEfficiency, calc.ome.baseMEResult.scrapedBaseME, 'military_page',
+        'Scraped from "military is functioning at X% efficiency" text');
+    }
+
+    // Effective Wage Rate (only shown when Base ME is available)
+    if (scraped.baseMilitaryEfficiency != null && calc.ome && calc.ome.baseMEResult && calc.ome.baseMEResult.effectiveWageRate != null) {
+      // Compare effective vs set wage rate
+      const effectiveWR = calc.ome.baseMEResult.effectiveWageRate;
+      const setWR = scraped.wageRate || 100;
+      add('military', 'Set Wage Rate',
+        setWR, setWR, 'military_page',
+        'User-configured wage rate (instant change)');
+      add('military', 'Effective Wage Rate',
+        effectiveWR, effectiveWR, 'calculated',
+        'Reverse-engineered from Base ME; converges slowly over ~96 ticks (5% of gap per tick)');
+    }
+
+    // War Horses
+    if (scraped.warHorses != null && state.horses != null) {
+      add('military', 'War Horses',
+        scraped.warHorses, state.horses, 'military_page',
+        'Used in battle calculations (+2 offense per horse)');
+    }
+
+    // =====================================================================
+    // EOWCF DEBUG INFO
+    // =====================================================================
+
+    if (scraped.eowcfActive) {
+      const eowcfElapsed = scraped.eowcfTicksElapsed || 0;
+      const eowcfRemaining = 97 - eowcfElapsed;
+      add('population', 'EOWCF Ticks Elapsed',
+        eowcfElapsed, state.eowcfTicksElapsed || 0, 'calculated',
+        'Ticks since EOWCF started (x10 birth boost lasts 24 ticks)');
+      add('population', 'EOWCF Ticks Remaining',
+        eowcfRemaining, eowcfRemaining, 'calculated',
+        'EOWCF fixed duration: 97 ticks total');
+
+      // Birth boost active indicator
+      const boostActive = eowcfElapsed < 24;
+      add('population', 'EOWCF x10 Boost Active',
+        boostActive ? 1 : 0, (pop.eowcfBoostActive ? 1 : 0), 'calculated',
+        'x10 birth boost active for first 24 ticks only (minimum 500/tick)');
+    }
+
+    // =====================================================================
+    // HONOR TITLE & EFFECTS
+    // =====================================================================
+
+    if (scraped.honorTitle && state.honor && state.honor.titleName) {
+      add('military', 'Honor Title',
+        0, 0, 'throne_page',
+        `Game: "${scraped.honorTitle}" | Engine: "${state.honor.titleName}"`);
+    }
+
+    // Honor multipliers (for War Hero personality debugging)
+    if (state.honor) {
+      const persName = state.personality.name;
+      const honorMult = state.personality.mods.honorEffects || 1;
+      if (honorMult !== 1) {
+        add('military', 'Personality Honor Multiplier',
+          honorMult, honorMult, 'calculated',
+          `${persName}: ${honorMult}x honor effects`);
+      }
+    }
+
+    // =====================================================================
+    // ACTIVE SPELLS (info only, no comparison)
+    // =====================================================================
+
+    if (scraped.activeSpells && Object.keys(scraped.activeSpells).length > 0) {
+      const spellNames = Object.keys(scraped.activeSpells).join(', ');
+      add('economy', 'Active Spells Count',
+        Object.keys(scraped.activeSpells).length,
+        Object.keys(scraped.activeSpells).length,
+        'throne_page',
+        `Spells: ${spellNames}`);
+    }
+
+    // =====================================================================
+    // RITUAL & DRAGON
+    // =====================================================================
+
+    if (scraped.ritual && scraped.ritual !== 'none') {
+      add('economy', 'Ritual Active',
+        1, 1, 'throne_page',
+        `${scraped.ritual} at ${scraped.ritualEffectiveness || 100}% effectiveness`);
+    }
+
+    if (scraped.dragon && scraped.dragon !== 'none') {
+      add('military', 'Dragon Active',
+        1, 1, 'throne_page',
+        `${scraped.dragon} dragon (affects wages, BE, birth, or ME depending on type)`);
     }
 
     return result;
@@ -532,48 +751,51 @@ const Debug = {
     const race = state.race;
     if (!race || !race.military) return null;
     const mil = race.military;
-    const raceMod = race.mods.ome || 1;
-    const persMod = state.personality.mods.ome || 1;
 
-    let total = 0;
-    // Soldiers: 3 offense each (no specs)
-    total += (state.soldiers || 0) * 3;
-    // Off specs
-    total += (state.offSpecs || 0) * (mil.offSpec.off || 0);
-    // Def specs
-    total += (state.defSpecs || 0) * (mil.defSpec.off || 0);
+    // War Hero personality gives +2 bonus to off spec strength
+    const offSpecBonus = state.personality.mods.offSpecStrengthBonus || 0;
+
+    // Calculate Raw Offense (base unit strengths, no modifiers)
+    let raw = 0;
+    // Soldiers: 3 offense each
+    raw += (state.soldiers || 0) * 3;
+    // Off specs (include War Hero bonus)
+    raw += (state.offSpecs || 0) * ((mil.offSpec.off || 0) + offSpecBonus);
+    // Def specs (typically 0 offense)
+    raw += (state.defSpecs || 0) * (mil.defSpec.off || 0);
     // Elites
-    total += (state.elites || 0) * (mil.elites.off || 0);
+    raw += (state.elites || 0) * (mil.elites.off || 0);
 
-    total *= raceMod * persMod;
+    // Game's "Offense Points" = Raw × OME (already includes race, pers, honor, TG, tactics, etc.)
+    // We need to calculate OME to match game display
+    const omeResult = Engine.calcOME(state);
+    const ome = omeResult.ome / 100; // Convert percentage to multiplier
 
-    // Honor OME
-    if (state.honor && state.honor.ome) total *= state.honor.ome;
-
-    return Math.round(total);
+    return Math.round(raw * ome);
   },
 
   _calcDefensePoints(state) {
     const race = state.race;
     if (!race || !race.military) return null;
     const mil = race.military;
-    const raceMod = race.mods.dme || 1;
-    const persMod = state.personality.mods.dme || 1;
 
-    let total = 0;
-    // Soldiers: 0 defense
-    // Off specs
-    total += (state.offSpecs || 0) * (mil.offSpec.def || 0);
+    // Calculate Raw Defense (base unit strengths, no modifiers)
+    let raw = 0;
+    // Soldiers: defense value varies by race (0 for Orc, 1 for others typically)
+    raw += (state.soldiers || 0) * (mil.soldiers.def || 0);
+    // Off specs (typically 0 defense)
+    raw += (state.offSpecs || 0) * (mil.offSpec.def || 0);
     // Def specs
-    total += (state.defSpecs || 0) * (mil.defSpec.def || 0);
+    raw += (state.defSpecs || 0) * (mil.defSpec.def || 0);
     // Elites
-    total += (state.elites || 0) * (mil.elites.def || 0);
+    raw += (state.elites || 0) * (mil.elites.def || 0);
 
-    total *= raceMod * persMod;
+    // Game's "Defense Points" = Raw × DME (already includes race, pers, forts, strategy, etc.)
+    // NOTE: DME does NOT include honor (per wiki)
+    const dmeResult = Engine.calcDME(state);
+    const dme = dmeResult.dme / 100; // Convert percentage to multiplier
 
-    if (state.honor && state.honor.ome) total *= state.honor.ome;
-
-    return Math.round(total);
+    return Math.round(raw * dme);
   },
 
   // ---------------------------------------------------------------------------
